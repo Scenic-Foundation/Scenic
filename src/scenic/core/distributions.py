@@ -819,7 +819,8 @@ class OperatorDistribution(Distribution):
         obj = valueInContext(self.object, context)
         operands = tuple(valueInContext(arg, context) for arg in self.operands)
         kwoperands = {
-            key: valueInContext(arg, context) for key, kwarg in self.kwoperands.items()
+            key: valueInContext(kwarg, context)
+            for key, kwarg in self.kwoperands.items()
         }
         return OperatorDistribution(self.operator, obj, operands, kwoperands)
 

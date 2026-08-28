@@ -310,7 +310,7 @@ class Constructible(Samplable):
 
         # Priorties are inversed: A lower priority number means semantically that it has a higher priority level
         for spec in normal_specifiers:
-            assert isinstance(spec, Specifier), (name, spec)
+            assert isinstance(spec, Specifier), (cls.__name__, spec)
 
             # Iterate over each property.
             for prop in spec.priorities:
@@ -358,7 +358,7 @@ class Constructible(Samplable):
                         # first checking it has not already been modified.
                         if prop in modifying:
                             raise SpecifierError(
-                                f'property "{prop}" of {name} modified twice.'
+                                f'property "{prop}" of {cls.__name__} modified twice.'
                             )
 
                         modifying[prop] = spec

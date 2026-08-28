@@ -24,7 +24,7 @@ from textwrap import dedent
 import trimesh
 
 from scenic.core.regions import MeshVolumeRegion
-from scenic.core.simulators import Simulation, Simulator
+from scenic.core.simulators import Simulation, SimulationCreationError, Simulator
 from scenic.core.type_support import toOrientation
 from scenic.core.vectors import Vector
 from scenic.simulators.webots.utils import ENU, WebotsCoordinateSystem

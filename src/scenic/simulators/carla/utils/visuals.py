@@ -23,6 +23,7 @@
 # ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 # CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
+import collections
 import datetime
 import math
 import weakref
@@ -308,7 +309,7 @@ class CameraManager(object):
         self._index = None
 
     def toggle_camera(self):
-        set_transform((self._transform_index + 1) % len(self._camera_transforms))
+        self.set_transform((self._transform_index + 1) % len(self._camera_transforms))
 
     def set_transform(self, idx):
         self._transform_index = idx

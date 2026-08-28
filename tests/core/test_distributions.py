@@ -9,6 +9,7 @@ import scipy.stats
 from scenic.core.distributions import (
     DiscreteRange,
     Normal,
+    OperatorDistribution,
     Options,
     Range,
     TruncatedNormal,
@@ -17,6 +18,7 @@ from scenic.core.distributions import (
     supportInterval,
     unionOfSupports,
 )
+from scenic.core.lazy_eval import DelayedArgument, LazilyEvaluable
 from scenic.core.type_support import underlyingType
 
 # Properties of distributions
@@ -280,3 +282,18 @@ def test_attribute_distribution():
     assert all(val == "1" or val == "2" for val in vals)
     assert any(val == "1" for val in vals)
     assert any(val == "2" for val in vals)
+
+
+def test_operator_distribution_lazy_keyword_argument():
+    def scaled(value, factor=1):
+        return value * factor
+
+    call = OperatorDistribution(
+        "__call__",
+        scaled,
+        (10,),
+        {"factor": DelayedArgument((), lambda context: 3)},
+    )
+    context = LazilyEvaluable.makeContext()
+    evaluated = call.evaluateInner(context)
+    assert evaluated.kwoperands["factor"] == 3
