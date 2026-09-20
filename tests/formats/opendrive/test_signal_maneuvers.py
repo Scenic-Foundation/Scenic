@@ -412,6 +412,8 @@ def assert_bidirectional(maneuver):
     assert maneuver in maneuver.signal.controlledManeuvers
     for other in maneuver.signal.controlledManeuvers:
         assert other.signal is maneuver.signal
+    assert maneuver.signal in maneuver.startLane.road.signals
+    assert maneuver.signal.road is maneuver.startLane.road
 
 
 def test_validity_lanes_per_lane_signals(tmp_path):
@@ -490,3 +492,5 @@ def test_intersection_backrefs_consistent(tmp_path):
                 if man.signal is not None:
                     assert_bidirectional(man)
                     assert man.signal.isTrafficLight
+        for road in network.connectingRoads:
+            assert road.signals == ()

@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 
 from scenic.core.vectors import Vector
-from scenic.domains.driving.roads import Network, SignalPriorityType
+from scenic.domains.driving.roads import Network, SignalTag
 
 # Shared two-way section: +1 travels −s, −1 travels +s.
 _TWOWAY_LANES = """\
@@ -310,38 +310,28 @@ def _st(position, s, t, tol=0.15):
 
 
 @pytest.mark.parametrize(
-    "literal, category",
+    "literal, tag",
     (
-        ("4way", SignalPriorityType.STOP),
-        ("stop", SignalPriorityType.STOP),
-        ("stopLine", SignalPriorityType.STOP),
-        ("yield", SignalPriorityType.YIELD),
-        ("trafficLight", SignalPriorityType.TRAFFIC_LIGHT),
-        ("turnOnRedAllowed", SignalPriorityType.TRAFFIC_LIGHT),
+        ("4way", SignalTag.FOUR_WAY),
+        ("stop", SignalTag.STOP),
+        ("yield", SignalTag.YIELD),
+        ("trafficLight", SignalTag.TRAFFIC_LIGHT),
+        ("turnOnRedAllowed", SignalTag.TURN_ON_RED_ALLOWED),
+        ("noTurnOnRed", SignalTag.NO_TURN_ON_RED),
     ),
 )
-def test_signal_priority_categories(literal, category):
-    assert SignalPriorityType.fromOpenDrive(literal) is category
+def test_known_opendrive_literals_become_tags(tmp_path, literal, tag):
+    xml = MAP_DEPRECATED_LOGICAL.replace(
+        '<semantics><priority type="stopLine"/></semantics>',
+        f'<semantics><priority type="{literal}"/></semantics>',
+    )
+    road = road_by_id(load_network(tmp_path, xml), 1)
+    signal = signal_on(road, 12)
+    assert tag in signal.tags
+    assert signal.hasTag(tag)
 
 
-@pytest.mark.parametrize(
-    "detail",
-    (
-        "keepClearLine",
-        "noParkingLine",
-        "noTurnOnRed",
-        "priorityRoad",
-        "priorityRoadEnd",
-        "priorityToTheRightRule",
-        "waitingLine",
-        "vendorSpecificPriority",
-    ),
-)
-def test_uncategorized_signal_priorities_keep_detail(detail):
-    assert SignalPriorityType.fromOpenDrive(detail) == detail
-
-
-def test_parser_keeps_categories_and_uncategorized_details(tmp_path):
+def test_unknown_opendrive_literals_stay_other_tags(tmp_path):
     xml = MAP_DEPRECATED_LOGICAL.replace(
         '<semantics><priority type="stopLine"/></semantics>',
         """<semantics>
@@ -352,34 +342,31 @@ def test_parser_keeps_categories_and_uncategorized_details(tmp_path):
     )
     road = road_by_id(load_network(tmp_path, xml), 1)
     signal = signal_on(road, 12)
-    assert signal.priorities == (
-        SignalPriorityType.STOP,
-        "keepClearLine",
-        "vendorSpecificPriority",
-    )
-    assert signal.tags == frozenset(
+    assert signal.tags == frozenset()
+    assert signal.otherTags == frozenset(
         {"stopLine", "keepClearLine", "vendorSpecificPriority"}
     )
-    assert signal.isStop
-    assert signal.isStopLine
-    assert signal.isKeepClearLine
+    assert not signal.isStop
     assert not signal.isFourWay
     assert not signal.isYield
     assert not signal.isTrafficLight
 
 
-def test_tag_queries_follow_source_literals_not_just_categories(tmp_path):
-    """All-way stop and turn-on-red collapse to categories but stay queryable."""
+def test_four_way_halts_without_being_classified_as_stop(tmp_path):
     four_way = MAP_DEPRECATED_LOGICAL.replace(
         '<semantics><priority type="stopLine"/></semantics>',
         '<semantics><priority type="4way"/></semantics>',
     )
     road = road_by_id(load_network(tmp_path, four_way), 1)
+    lanes = lanes_by_id(road)
     signal = signal_on(road, 12)
-    assert signal.priorities == (SignalPriorityType.STOP,)
-    assert signal.isStop
+    assert signal.tags == frozenset({SignalTag.FOUR_WAY})
+    assert signal.otherTags == frozenset()
     assert signal.isFourWay
-    assert not signal.isStopLine
+    assert not signal.isStop
+    assert signal.stoppingS == 20.0
+    _st(signal.stoppingPositionOn(lanes[-1]), 20.0, -1.75)
+    _st(signal.stoppingPositionOn(lanes[1]), 20.0, 1.75)
 
     turn_on_red = MAP_DEPRECATED_LOGICAL.replace(
         '<semantics><priority type="stopLine"/></semantics>',
@@ -387,20 +374,36 @@ def test_tag_queries_follow_source_literals_not_just_categories(tmp_path):
     )
     road = road_by_id(load_network(tmp_path, turn_on_red), 1)
     signal = signal_on(road, 12)
-    assert signal.priorities == (SignalPriorityType.TRAFFIC_LIGHT,)
-    assert signal.isTrafficLight
+    assert signal.tags == frozenset({SignalTag.TURN_ON_RED_ALLOWED})
     assert signal.isTurnOnRedAllowed
+    assert not signal.isTrafficLight
     assert not signal.isNoTurnOnRed
+    assert signal.stoppingS is None
 
 
 def test_country_and_subtype_warn_in_favor_of_semantic_tags(tmp_path):
     road = road_by_id(load_network(tmp_path, MAP_DEPRECATED_LOGICAL), 1)
     signal = signal_on(road, 12)
-    assert signal.tags == frozenset({"stopLine"})
+    assert signal.tags == frozenset()
+    assert signal.otherTags == frozenset({"stopLine"})
     with pytest.warns(DeprecationWarning, match=r"Signal\.country.*Signal\.tags"):
         assert signal.country == "OpenDRIVE"
     with pytest.warns(DeprecationWarning, match=r"Signal\.subtype.*Signal\.tags"):
         assert signal.subtype == "-1"
+
+
+def test_opendrive_arrow_head_type_is_traffic_light(tmp_path):
+    """Arrow icons are traffic lights; red vs green is not a map tag."""
+    xml = MAP_SIGNAL_REFERENCE.replace(
+        'type="1000001" country="OpenDRIVE"\n              subtype="-1"',
+        'type="1000020" country="OpenDRIVE"\n              subtype="10"',
+    )
+    road = road_by_id(load_network(tmp_path, xml), 1)
+    signal = signal_on(road, 201)
+    assert signal.type == "1000020"
+    assert signal.isTrafficLight
+    assert signal.tags == frozenset()
+    assert signal.otherTags == frozenset()
 
 
 # --- deprecated pre-1.8 logical @s ---
@@ -413,6 +416,9 @@ def test_deprecated_position_road_halts_at_logical_s_not_pole(tmp_path):
     stop = signal_on(road, 10)
     assert stop.s == 12.0
     assert stop.stoppingS == 12.0
+    assert stop.type == "206"
+    assert stop.tags == frozenset()
+    assert stop.isStop
     assert stop.stoppingPositionOn(lanes[-1]) is None
     _st(stop.stoppingPositionOn(lanes[1]), 12.0, 1.75)
 
@@ -423,28 +429,32 @@ def test_deprecated_position_inertial_halts_at_logical_s(tmp_path):
     lanes = lanes_by_id(road)
     yield_sig = signal_on(road, 11)
     assert yield_sig.stoppingS == 28.0
+    assert yield_sig.type == "205"
+    assert yield_sig.tags == frozenset()
+    assert yield_sig.isYield
     _st(yield_sig.stoppingPositionOn(lanes[-1]), 28.0, -1.75)
     assert yield_sig.stoppingPositionOn(lanes[1]) is None
 
 
-def test_deprecated_midroad_stopline_still_both_directions(tmp_path):
-    """A painted line at mid-s is not a junction entry; both directions halt."""
+def test_unrecognized_stopline_tag_does_not_create_a_halt(tmp_path):
+    """Painted-line literals are otherTags; they do not decide stopping yet."""
     network = load_network(tmp_path, MAP_DEPRECATED_LOGICAL)
     road = road_by_id(network, 1)
     lanes = lanes_by_id(road)
     line = signal_on(road, 12)
-    assert line.stoppingS == 20.0
-    _st(line.stoppingPositionOn(lanes[-1]), 20.0, -1.75)
-    _st(line.stoppingPositionOn(lanes[1]), 20.0, 1.75)
+    assert line.otherTags == frozenset({"stopLine"})
+    assert line.tags == frozenset()
+    assert line.stoppingS is None
+    assert line.stoppingPositionOn(lanes[-1]) is None
+    assert line.stoppingPositionOn(lanes[1]) is None
 
 
 def test_deprecated_halt_s_value_ahead_skips_opposite_direction(tmp_path):
     network = load_network(tmp_path, MAP_DEPRECATED_LOGICAL)
     road = road_by_id(network, 1)
     lanes = lanes_by_id(road)
-    # +s traffic: stop line at 20, then yield at 28. Opposite stop at 12 is behind.
-    _st(lanes[-1].haltPositionAhead(Vector(1, -1.75)), 20.0, -1.75)
-    _st(lanes[-1].haltPositionAhead(Vector(21, -1.75)), 28.0, -1.75)
+    # +s traffic: yield at 28. Opposite stop at 12 is behind.
+    _st(lanes[-1].haltPositionAhead(Vector(1, -1.75)), 28.0, -1.75)
     assert lanes[-1].haltPositionAhead(Vector(29, -1.75)) is None
 
 
@@ -454,25 +464,25 @@ def test_signal_lookups_propagate_in_each_elements_travel_order(tmp_path):
     lanes = lanes_by_id(road)
 
     road_entries, road_s_values = road.signalLookup()
-    assert [entry[1].openDriveID for entry in road_entries] == ["10", "12", "11"]
-    assert road_s_values == [12.0, 20.0, 28.0]
+    assert [entry[1].openDriveID for entry in road_entries] == ["10", "11"]
+    assert road_s_values == [12.0, 28.0]
 
     forward_entries, forward_s_values = lanes[-1].signalLookup()
-    assert [entry[1].openDriveID for entry in forward_entries] == ["12", "11"]
-    assert forward_s_values == [20.0, 28.0]
+    assert [entry[1].openDriveID for entry in forward_entries] == ["11"]
+    assert forward_s_values == [28.0]
     assert [entry[1].openDriveID for entry in lanes[-1].signalsAhead(20.1)] == ["11"]
 
     backward_entries, backward_s_values = lanes[1].signalLookup()
-    assert [entry[1].openDriveID for entry in backward_entries] == ["12", "10"]
-    assert backward_s_values == [20.0, 28.0]
-    assert [entry[2] for entry in backward_entries] == [20.0, 12.0]
+    assert [entry[1].openDriveID for entry in backward_entries] == ["10"]
+    assert backward_s_values == [28.0]
+    assert [entry[2] for entry in backward_entries] == [12.0]
     assert [entry[1].openDriveID for entry in lanes[1].signalsAhead(20.1)] == ["10"]
 
     for lane in lanes.values():
         assert lane.sections[0].signalLookup() == lane.signalLookup()
     section_entries, section_s_values = road.sections[0].signalLookup()
-    assert [entry[1].openDriveID for entry in section_entries] == ["10", "12", "11"]
-    assert section_s_values == [12.0, 20.0, 28.0]
+    assert [entry[1].openDriveID for entry in section_entries] == ["10", "11"]
+    assert section_s_values == [12.0, 28.0]
 
 
 def test_signal_propagation_filters_sections_and_resolves_boundary(tmp_path):
@@ -484,18 +494,18 @@ def test_signal_propagation_filters_sections_and_resolves_boundary(tmp_path):
     assert [
         [entry[1].openDriveID for entry in section.signalLookup()[0]]
         for section in forward_sections
-    ] == [["12"], ["11"]]
+    ] == [[], ["11"]]
 
     backward_sections = lanes[1].sections
     assert [
         [entry[1].openDriveID for entry in section.signalLookup()[0]]
         for section in backward_sections
-    ] == [["12"], ["10"]]
+    ] == [[], ["10"]]
 
     assert [
         [entry[1].openDriveID for entry in section.signalLookup()[0]]
         for section in road.sections
-    ] == [["10", "12"], ["12", "11"]]
+    ] == [["10"], ["11"]]
 
 
 # --- <signalReference> (same signal, other road) ---
@@ -568,6 +578,9 @@ def test_carla_twoway_arriving_side_halts_leaving_side_does_not(tmp_path):
 
     assert west_light.stoppingS == 20.0
     assert east_light.stoppingS == 0.0
+    assert west_light.type == "1000001"
+    assert west_light.tags == frozenset()
+    assert west_light.isTrafficLight
 
     # West +s is arriving at the junction.
     _st(west_light.stoppingPositionOn(west_lanes[-1]), 20.0, -1.75)

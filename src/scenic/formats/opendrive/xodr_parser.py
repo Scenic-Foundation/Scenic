@@ -1181,12 +1181,12 @@ class Road:
         for i, signal_ in enumerate(self.signals):
             signal = roadDomain.Signal(
                 uid=f"signal{signal_.id_}_{self.id_}_{i}",
-                openDriveID=signal_.id_,
+                openDriveID=str(signal_.id_),
                 country=signal_.country,
                 type=signal_.type_,
                 subtype=signal_.subtype,
-                priorities=signal_.priorities,
                 tags=signal_.tags,
+                otherTags=signal_.otherTags,
                 s=signal_.s,
                 t=signal_.t,
                 orientation=signal_.orientation,
@@ -1284,8 +1284,8 @@ class Signal:
         s,
         t,
         validity=None,
-        priorities=(),
         tags=(),
+        otherTags=(),
     ):
         self.id_ = id_
         self.country = country
@@ -1294,10 +1294,12 @@ class Signal:
         self.orientation = orientation
         self.s = s
         self.t = t
-        #: Tuple of `scenic.domains.driving.roads.SignalPriorityType` from ``<semantics><priority>``.
-        self.priorities = tuple(priorities)
-        #: Exact OpenDRIVE 1.8+ semantic tag strings.
+        #: OpenDRIVE ``<validity>`` lane range ``[fromLane, toLane]``, if any.
+        self.validity = validity
+        #: Known `scenic.domains.driving.roads.SignalTag` values.
         self.tags = frozenset(tags)
+        #: Source literals that are not known tags.
+        self.otherTags = frozenset(otherTags)
 
 
 class SignalReference:
@@ -1513,39 +1515,23 @@ class RoadMap:
             return None
         return [int(validity_elem.get("fromLane")), int(validity_elem.get("toLane"))]
 
-    # OpenDRIVE / CARLA country="OpenDRIVE" type codes with a known priority meaning.
-    _LEGACY_TYPE_TO_PRIORITY = {
-        "1000001": roadDomain.SignalPriorityType.TRAFFIC_LIGHT,
-        "206": roadDomain.SignalPriorityType.STOP,
-        "205": roadDomain.SignalPriorityType.YIELD,
+    # OpenDRIVE ``<semantics><priority type>`` literals that map onto `SignalTag`.
+    _OPENDRIVE_PRIORITY_TO_TAG = {
+        "stop": roadDomain.SignalTag.STOP,
+        "4way": roadDomain.SignalTag.FOUR_WAY,
+        "yield": roadDomain.SignalTag.YIELD,
+        "trafficLight": roadDomain.SignalTag.TRAFFIC_LIGHT,
+        "turnOnRedAllowed": roadDomain.SignalTag.TURN_ON_RED_ALLOWED,
+        "noTurnOnRed": roadDomain.SignalTag.NO_TURN_ON_RED,
     }
 
-    def __warn_priority_type_disagreement(self, signal):
-        """Warn if a known legacy ``type`` conflicts with ``<priority>`` semantics."""
-        legacy = self._LEGACY_TYPE_TO_PRIORITY.get(signal.type_)
-        if legacy is not None and signal.priorities and legacy not in signal.priorities:
-            listed = ", ".join(
-                p.value if isinstance(p, roadDomain.SignalPriorityType) else p
-                for p in signal.priorities
-            )
-            warn(
-                f'signal {signal.id_} has OpenDRIVE type "{signal.type_}" '
-                f"(legacy {legacy.value}) but <priority> lists [{listed}]; "
-                f"using priorities for classification"
-            )
-
-    def __parse_signal_priorities(self, signal_elem):
-        """Parse ``<semantics><priority type="…"/>`` children (OpenDRIVE 1.8+).
-
-        Stop, yield, and traffic-light literals are mapped to broad
-        `scenic.domains.driving.roads.SignalPriorityType` categories. Other literals are retained
-        verbatim as strings. Other semantic categories (``<speed>``, ``<lane>``,
-        …) are ignored for now.
-        """
+    def __parse_signal_tags(self, signal_elem):
+        """Collect known tags and leftover literals from ``<priority>``."""
+        tags = set()
+        otherTags = set()
         semantics_elem = signal_elem.find("semantics")
         if semantics_elem is None:
-            return ()
-        priorities = []
+            return frozenset(), frozenset()
         for priority_elem in semantics_elem.findall("priority"):
             type_str = priority_elem.get("type")
             if type_str is None:
@@ -1554,21 +1540,15 @@ class RoadMap:
                     "skipping it"
                 )
                 continue
-            priorities.append(roadDomain.SignalPriorityType.fromOpenDrive(type_str))
-        return tuple(priorities)
-
-    def __parse_signal_tags(self, signal_elem):
-        """Preserve exact OpenDRIVE 1.8+ priority semantics as signal tags."""
-        semantics_elem = signal_elem.find("semantics")
-        if semantics_elem is None:
-            return frozenset()
-        return frozenset(
-            type_str
-            for priority_elem in semantics_elem.findall("priority")
-            if (type_str := priority_elem.get("type")) is not None
-        )
+            tag = self._OPENDRIVE_PRIORITY_TO_TAG.get(type_str)
+            if tag is not None:
+                tags.add(tag)
+            else:
+                otherTags.add(type_str)
+        return frozenset(tags), frozenset(otherTags)
 
     def __parse_signal(self, signal_elem):
+        tags, otherTags = self.__parse_signal_tags(signal_elem)
         return Signal(
             signal_elem.get("id"),
             signal_elem.get("country"),
@@ -1581,8 +1561,8 @@ class RoadMap:
             # dynamic   signal_elem.get("dynamic"),
             # zOffset   signal_elem.get("zOffset"),
             self.__parse_signal_validity(signal_elem.find("validity")),
-            self.__parse_signal_priorities(signal_elem),
-            self.__parse_signal_tags(signal_elem),
+            tags,
+            otherTags,
         )
 
     def __parse_signal_reference(self, signal_reference_elem):
@@ -1794,7 +1774,6 @@ class RoadMap:
             if signals is not None:
                 for signal_elem in signals.iter("signal"):
                     signal = self.__parse_signal(signal_elem)
-                    self.__warn_priority_type_disagreement(signal)
                     road.signals.append(signal)
 
                 for signal_ref_elem in signals.iter("signalReference"):
@@ -1811,8 +1790,8 @@ class RoadMap:
                         signalReference.s,
                         signalReference.t,
                         signalReference.validity,
-                        referencedSignal.priorities,
                         referencedSignal.tags,
+                        referencedSignal.otherTags,
                     )
                     road.signals.append(signal)
 
@@ -2068,6 +2047,19 @@ class RoadMap:
                         )
                         maneuversForLane[fromLane.lane].append(maneuver)
 
+            # Connector-hosted signals were copied onto incoming roads before
+            # conversion, so each device has two domain Signal objects. Point
+            # maneuvers at the copy on the start approach (the one used for halt).
+            for maneuvers in maneuversForLane.values():
+                for maneuver in maneuvers:
+                    if maneuver.signal is None:
+                        continue
+                    wanted = str(maneuver.signal.openDriveID)
+                    for sig in maneuver.startLane.road.signals:
+                        if str(sig.openDriveID) == wanted:
+                            maneuver.signal = sig
+                            break
+
             # Gather maneuvers
             allManeuvers = []
             for lane, maneuvers in maneuversForLane.items():
@@ -2115,6 +2107,8 @@ class RoadMap:
                 object.__setattr__(maneuver, "intersection", intersection)
 
         for road in connectingRoads.values():
+            for sig in road.signals:
+                allElements.pop(sig.uid, None)
             road.signals = ()
 
         # Hook up road-intersection links

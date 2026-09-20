@@ -150,25 +150,20 @@ class ManeuverType(enum.Enum):
 
 
 @enum.unique
-class SignalPriorityType(enum.Enum):
-    """Broad behavioral categories for OpenDRIVE signal priorities."""
+class SignalTag(enum.Enum):
+    """Known control tags for a `Signal`.
 
-    STOP = "stop"
-    YIELD = "yield"
+    Meanings are Scenic's, so another map format can reuse the same tags.
+    Unrecognized source literals are stored on `Signal.otherTags`.
+    """
+
+    STOP = "stop"  #: Come to a complete stop, then proceed only when the way is clear.
+    FOUR_WAY = "fourWay"  #: All-way stop: every approach must halt.
+    YIELD = "yield"  #: Give way to conflicting traffic; stop only if needed.
     TRAFFIC_LIGHT = "trafficLight"
-
-    @classmethod
-    def fromOpenDrive(cls, type_str: str) -> Union[SignalPriorityType, str]:
-        """Categorize a priority, preserving uncategorized details as strings."""
-        categories = {
-            "4way": cls.STOP,
-            "stop": cls.STOP,
-            "stopLine": cls.STOP,
-            "yield": cls.YIELD,
-            "trafficLight": cls.TRAFFIC_LIGHT,
-            "turnOnRedAllowed": cls.TRAFFIC_LIGHT,
-        }
-        return categories.get(type_str, type_str)
+    #: Signalized control; whether to proceed depends on the current indication.
+    TURN_ON_RED_ALLOWED = "turnOnRedAllowed"  #: Turning on red is permitted.
+    NO_TURN_ON_RED = "noTurnOnRed"  #: Turning on red is forbidden.
 
 
 @attr.s(auto_attribs=True, kw_only=True, eq=False)
@@ -421,8 +416,6 @@ class LinearElement(NetworkElement):
             _toVector(point), distance, steps=steps, stepSize=stepSize
         )
 
-    # Signals tuple with singal object in increasing s value, include signal s and stopping line
-
     # Signal entries are ordered by element-local s, which always increases from
     # the start of this element's centerline to its end. For backward lanes this
     # is travel order, the reverse of OpenDRIVE road-s order.
@@ -435,7 +428,6 @@ class LinearElement(NetworkElement):
 
     #: OpenDRIVE road-s interval covered by this element, if known.
     _roadSRange: Optional[Tuple[float, float]] = None
-    # make them public, and allow to call directly - prob clearer names
     _signalEntries: Tuple[SignalEntry, ...] = ()
     _signalSValues: Tuple[float, ...] = ()
 
@@ -1009,20 +1001,18 @@ class Signal:
     """
 
     uid: str = None
-    #: ID number as in OpenDRIVE (unique ID of the signal within the database)
-    openDriveID: int
-    #: Deprecated country code of the signal; use `tags` instead.
+    #: Identifier from the source map (OpenDRIVE ``id``; stored as a string).
+    openDriveID: str
+    #: Deprecated country code; `type` is still the format type identifier.
     _country: str
-    #: Type identifier according to country code.
+    #: Type identifier according to the source map.
     type: str
-    #: Deprecated subtype identifier; use `tags` instead.
+    #: Deprecated country-specific subtype; `type` is still the format type identifier.
     _subtype: Optional[str] = None
-    #: Broad category or original OpenDRIVE string for each ``<priority>`` entry.
-    #: Empty for signals without 1.8+ priority semantics.
-    priorities: Tuple[Union[SignalPriorityType, str], ...] = ()
-    #: Exact OpenDRIVE 1.8+ semantic tag strings.
-    # – is this OD tags? How is it being populated?
-    tags: FrozenSet[str] = frozenset()
+    #: Known control tags; see `SignalTag` for meanings.
+    tags: FrozenSet[SignalTag] = frozenset()
+    #: Source control literals that are not `SignalTag` members.
+    otherTags: FrozenSet[str] = frozenset()
     #: Longitudinal station along the parent road used for halt decisions.
     s: Optional[float] = None
     #: Lateral t-coordinate from the reference line (OpenDRIVE ``t``; +t = left).
@@ -1045,10 +1035,14 @@ class Signal:
 
     @property
     def country(self) -> str:
-        """Deprecated country code; use `tags` instead."""
+        """Deprecated country code.
+
+        Prefer `tags` for control meaning when the map provides them.
+        `type` remains the format type identifier (needed for CARLA maps).
+        """
         warnings.warn(
-            "Signal.country is deprecated; use Signal.tags and OpenDRIVE 1.8 "
-            "semantic metadata instead.",
+            "Signal.country is deprecated; prefer Signal.tags for control "
+            "meaning when present. Signal.type remains the type identifier.",
             DeprecationWarning,
             stacklevel=2,
         )
@@ -1056,18 +1050,22 @@ class Signal:
 
     @property
     def subtype(self) -> Optional[str]:
-        """Deprecated country-specific subtype; use `tags` instead."""
+        """Deprecated country-specific subtype.
+
+        Prefer `tags` for control meaning when the map provides them.
+        `type` remains the format type identifier (needed for CARLA maps).
+        """
         warnings.warn(
-            "Signal.subtype is deprecated; use Signal.tags and OpenDRIVE 1.8 "
-            "semantic metadata instead.",
+            "Signal.subtype is deprecated; prefer Signal.tags for control "
+            "meaning when present. Signal.type remains the type identifier.",
             DeprecationWarning,
             stacklevel=2,
         )
         return self._subtype
 
-    def hasPriority(self, priority: SignalPriorityType) -> bool:
-        """Whether this signal lists the given OpenDRIVE priority semantic."""
-        return priority in self.priorities
+    def hasTag(self, tag: SignalTag) -> bool:
+        """Whether this signal carries the given known control tag."""
+        return tag in self.tags
 
     def affects(self, lane: Lane) -> bool:
         """Whether this signal applies to ``lane``.
@@ -1096,7 +1094,7 @@ class Signal:
         return abs(s) <= 1e-4 or abs(s - length) <= 1e-4
 
     def _isHaltLocation(self) -> bool:
-        return self.isStop or self.isYield
+        return self.isStop or self.isYield or self.isFourWay
 
     def resolveStoppingS(self, plus_contact, minus_contact):
         """Pick the halt station from this signal's ``s`` or a junction contact.
@@ -1167,24 +1165,44 @@ class Signal:
 
     @property
     def isTrafficLight(self) -> bool:
-        """Whether this signal is a traffic light."""
-        if self.priorities:
-            return self.hasPriority(SignalPriorityType.TRAFFIC_LIGHT)
-        return self.type == "1000001"
+        """Whether this is a signalized control (red/yellow/green or equivalent)."""
+        if self.hasTag(SignalTag.TRAFFIC_LIGHT):
+            return True
+        # CARLA / OpenDRIVE maps encode lights as type codes, not tags.
+        return self.type in {
+            "1000001",
+            "1000008",
+            "1000009",
+            "1000010",
+            "1000011",
+            "1000012",
+            "1000020",
+        }
 
     @property
     def isStop(self) -> bool:
-        """Whether this signal is a stop sign."""
-        if self.priorities:
-            return self.hasPriority(SignalPriorityType.STOP)
-        return self.type == "206"
+        """Whether the vehicle must come to a complete stop before proceeding."""
+        return self.hasTag(SignalTag.STOP) or self.type == "206"
 
     @property
     def isYield(self) -> bool:
-        """Whether this signal is a yield sign."""
-        if self.priorities:
-            return self.hasPriority(SignalPriorityType.YIELD)
-        return self.type == "205"
+        """Whether the vehicle must give way; a full stop is not always required."""
+        return self.hasTag(SignalTag.YIELD) or self.type == "205"
+
+    @property
+    def isFourWay(self) -> bool:
+        """Whether every approach must halt (all-way stop)."""
+        return self.hasTag(SignalTag.FOUR_WAY)
+
+    @property
+    def isNoTurnOnRed(self) -> bool:
+        """Whether turning on red is forbidden."""
+        return self.hasTag(SignalTag.NO_TURN_ON_RED)
+
+    @property
+    def isTurnOnRedAllowed(self) -> bool:
+        """Whether turning on red is explicitly permitted."""
+        return self.hasTag(SignalTag.TURN_ON_RED_ALLOWED)
 
 
 @attr.s(auto_attribs=True, kw_only=True, repr=False, eq=False)
