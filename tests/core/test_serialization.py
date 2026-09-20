@@ -14,6 +14,7 @@ import pytest
 from scenic.core.serialization import SerializationError, Serializer, deterministicHash
 from scenic.core.simulators import DivergenceError, DummySimulator
 from tests.utils import (
+    OrientationSimulator,
     areEquivalent,
     compileScenic,
     getEgoActionsFrom,
@@ -456,6 +457,31 @@ class TestSimulationReplay:
         sim = DummySimulator(drift=1.001)
         with pytest.raises(DivergenceError):
             sim.replay(scene, replay, maxSteps=5, divergenceTolerance=0.004)
+
+    def orientationDivergenceHelper(self, spin, maxSteps=1):
+        scene = sampleSceneFrom("ego = new Object")
+        sim = OrientationSimulator(spin=spin).simulate(
+            scene, maxSteps=maxSteps, maxIterations=1, enableDivergenceCheck=True
+        )
+        return scene, sim.getReplay()
+
+    def test_divergence_orientation(self):
+        scene, replay = self.orientationDivergenceHelper(spin=0.1)
+        sim = OrientationSimulator(spin=0.2)
+        with pytest.raises(DivergenceError):
+            sim.replay(scene, replay, maxSteps=1)
+
+    def test_divergence_orientation_none(self):
+        scene, replay = self.orientationDivergenceHelper(spin=0.1)
+        OrientationSimulator(spin=0.1).replay(scene, replay, maxSteps=1)
+
+    def test_divergence_orientation_tolerance(self):
+        scene, replay = self.orientationDivergenceHelper(spin=0.1)
+        sim = OrientationSimulator(spin=0.105)
+        # The orientations differ by an angle of 0.005 radians.
+        sim.replay(scene, replay, maxSteps=1, divergenceTolerance=0.006)
+        with pytest.raises(DivergenceError):
+            sim.replay(scene, replay, maxSteps=1, divergenceTolerance=0.004)
 
     def test_divergence_continue(self):
         scene = sampleSceneFrom(

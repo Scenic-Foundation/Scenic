@@ -8,6 +8,7 @@ import scenic.core.dynamics as dynamics
 from scenic.core.errors import InvalidScenarioError, ScenicSyntaxError
 from scenic.core.simulators import RejectSimulationException, TerminationType
 from tests.utils import (
+    OrientationSimulator,
     checkErrorLineNumber,
     compileScenic,
     sampleActions,
@@ -19,6 +20,7 @@ from tests.utils import (
     sampleResultFromScene,
     sampleResultOnce,
     sampleScene,
+    sampleSceneFrom,
 )
 
 ## Dynamic state
@@ -52,6 +54,39 @@ def test_dynamic_final_property():
     )
     actions = sampleEgoActions(scenario, maxSteps=4)
     assert len(actions) == 3
+
+
+def test_dynamic_final_property_derived():
+    """A dynamic final property is recomputed from the values the simulator provides."""
+    scene = sampleSceneFrom(
+        """
+        class TestObj:
+            doubleYaw[dynamic, final]: 2 * self.yaw
+        ego = new TestObj
+        record ego.doubleYaw as val
+        """
+    )
+    result = OrientationSimulator(spin=0.1).simulate(scene, maxSteps=2)
+    for step in range(3):
+        assert result.records["val"][step][1] == pytest.approx(2 * 0.1 * step)
+
+
+def test_dynamic_final_angle():
+    """A class can make an Euler angle final, so the simulator does not provide it."""
+    scene = sampleSceneFrom(
+        """
+        class Upright:
+            pitch[dynamic, final]: 0
+            roll[dynamic, final]: 0
+        ego = new Upright
+        record ego.pitch as pitch
+        record ego.yaw as yaw
+        """
+    )
+    result = OrientationSimulator(spin=0.1).simulate(scene, maxSteps=1)
+    # The simulator reports a pitch of 0.2, but the class overrides it.
+    assert result.records["pitch"][1][1] == 0
+    assert result.records["yaw"][1][1] == pytest.approx(0.1)
 
 
 def test_dynamic_cached_property():

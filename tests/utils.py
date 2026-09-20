@@ -19,9 +19,54 @@ import trimesh.caching
 
 from scenic import scenarioFromString
 from scenic.core.distributions import RejectionException
-from scenic.core.simulators import DummySimulator, RejectSimulationException
+from scenic.core.simulators import (
+    DummySimulation,
+    DummySimulator,
+    RejectSimulationException,
+)
 from scenic.core.utils import DefaultIdentityDict
+from scenic.core.vectors import Orientation
 import scenic.syntax.veneer as veneer
+
+## Simulators
+
+
+class OrientationSimulation(DummySimulation):
+    """Simulation providing `orientation` instead of the Euler angles.
+
+    Objects rotate about the yaw axis by **spin** radians per time step, and have
+    a constant pitch of 0.2 and roll of 0.3 so that tests can tell the angles apart.
+    """
+
+    providesOrientation = True
+
+    def __init__(self, scene, spin=0, **kwargs):
+        self.spin = spin
+        self.time = 0
+        super().__init__(scene, **kwargs)
+
+    def step(self):
+        super().step()
+        self.time += 1
+
+    def getProperties(self, obj, properties):
+        vals = super().getProperties(obj, properties | {"yaw", "pitch", "roll"})
+        del vals["yaw"], vals["pitch"], vals["roll"]
+        vals["orientation"] = Orientation._fromEuler(self.spin * self.time, 0.2, 0.3)
+        for prop in properties:
+            if prop not in vals:
+                vals[prop] = None
+        return vals
+
+
+class OrientationSimulator(DummySimulator):
+    def __init__(self, spin=0, **kwargs):
+        self.spin = spin
+        super().__init__(**kwargs)
+
+    def createSimulation(self, scene, **kwargs):
+        return OrientationSimulation(scene, spin=self.spin, **kwargs)
+
 
 ## Scene generation utilities
 

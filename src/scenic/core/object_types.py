@@ -113,6 +113,7 @@ class Constructible(Samplable):
     """
 
     _dynamicProperties = {}
+    _derivedDynamicProperties = {}
 
     def __init_subclass__(cls):
         super().__init_subclass__()
@@ -122,20 +123,28 @@ class Constructible(Samplable):
             # transformed by __init_subclass__, so we skip it now.
             return
 
-        # Identify cached properties/methods which will need to be cleared
-        # each time step during dynamic simulations.
+        # Identify cached properties/methods which will need to be cleared each time
+        # step during dynamic simulations, with overriding definitions taking priority.
         clearers = {}
-        for attr, value in cls.__dict__.items():
-            if isinstance(value, property):
-                value = value.fget
-            if clearer := getattr(value, "_scenic_cache_clearer", None):
-                clearers[attr] = clearer
         for sc in cls.__mro__:
-            if sclearers := getattr(sc, "_cache_clearers", None):
-                for attr, clearer in sclearers.items():
-                    if attr not in clearers:
-                        clearers[attr] = clearer
-        cls._cache_clearers = clearers
+            for attr, value in sc.__dict__.items():
+                if attr in clearers:
+                    continue
+                if isinstance(value, property):
+                    value = value.fget
+                if clearer := getattr(value, "_scenic_cache_clearer", None):
+                    clearers[attr] = clearer
+        # Caches created by `cached` are stored in an attribute, which `_clearCaches`
+        # can delete directly; those from `cached_method` need their clearer called.
+        attrNames, otherClearers = [], []
+        for clearer in clearers.values():
+            attrName = getattr(clearer, "_scenic_cache_attr", None)
+            if attrName is None:
+                otherClearers.append(clearer)
+            else:
+                attrNames.append(attrName)
+        cls._cachedAttrNames = tuple(attrNames)
+        cls._otherCacheClearers = tuple(otherClearers)
 
         # Find all defaults provided by the class or its superclasses
         allDefs = collections.defaultdict(list)
@@ -150,6 +159,7 @@ class Constructible(Samplable):
         dyns = []
         finals = []
         dynFinals = {}
+        derived = {}
         for prop, defs in allDefs.items():
             primary, rest = defs[0], defs[1:]
             spec = primary.resolveFor(prop, rest)
@@ -157,12 +167,19 @@ class Constructible(Samplable):
 
             if isDynamic := any(defn.isDynamic for defn in defs):
                 dyns.append(prop)
+                # Properties which can be recomputed from other properties during a
+                # simulation, instead of being provided by the simulator.
+                if primary.dynamicValue:
+                    derived[prop] = primary.dynamicValue
+                elif primary.isFinal:
+                    derived[prop] = primary.value
             if primary.isFinal:
                 finals.append(prop)
                 if isDynamic:
                     dynFinals[prop] = primary.value
         cls._defaults = resolvedDefs
         cls._finalProperties = frozenset(finals)
+        cls._derivedDynamicProperties = derived
 
         # Determine types of dynamic properties
         dynTypes = {}
@@ -187,6 +204,23 @@ class Constructible(Samplable):
             for prop, val in cls._dynamicProperties.items()
             if prop not in cls._finalProperties
         }
+        # Simulators setting `Simulation.providesOrientation` supply `orientation`
+        # in place of the Euler angles, which are then derived from it instead.
+        # The angles may be absent: a class can make them final, or have a dynamic
+        # `orientation` and no Euler angles at all (e.g. a subclass of `Point`).
+        withOrientation = dict(cls._simulatorProvidedProperties)
+        if "orientation" in dynTypes:
+            for angle in ("yaw", "pitch", "roll"):
+                withOrientation.pop(angle, None)
+            withOrientation["orientation"] = dynTypes["orientation"]
+        cls._simulatorProvidedPropertiesGivenOrientation = withOrientation
+        # The dynamic properties to derive from the provided ones each time step.
+        cls._propertiesToDerive = tuple(
+            prop for prop in derived if prop not in cls._simulatorProvidedProperties
+        )
+        cls._propertiesToDeriveGivenOrientation = tuple(
+            prop for prop in derived if prop not in withOrientation
+        )
 
         # Extract order in which to recompute dynamic final properties each time step
         if defaultValues:
@@ -459,6 +493,51 @@ class Constructible(Samplable):
             value = valueInContext(rawVal, self)
             self._specify(self, prop, value)
 
+    def _invalidateDerivedProperties(self, givenOrientation=False):
+        """Mark derived dynamic properties as stale, to be recomputed on demand.
+
+        Used during dynamic simulations: rather than eagerly recomputing properties
+        like :prop:`orientation` which are derived from the values provided by the
+        simulator, we simply delete them, so that ``__getattr__`` below recomputes
+        them the first time (if ever) they are actually needed during this time step.
+
+        Which properties are derived depends on whether the simulator provides
+        :prop:`orientation` itself, as indicated by **givenOrientation** (see
+        `Simulation.providesOrientation`).
+        """
+        if givenOrientation:
+            props = self._propertiesToDeriveGivenOrientation
+        else:
+            props = self._propertiesToDerive
+        for prop in props:
+            try:
+                delattr(self, prop)
+            except AttributeError:
+                pass
+
+    def __getattr__(self, name):
+        # Recompute a derived dynamic property invalidated above, if this is one.
+        recomputer = type(self)._derivedDynamicProperties.get(name)
+        if recomputer is None:
+            self.__getattribute__(name)  # raise the usual AttributeError
+        # Guard against cycles (e.g. if a simulator interface fails to provide any of
+        # the properties a group of mutually-dependent derived properties needs).
+        inProgress = self.__dict__.get("_derivationInProgress")
+        if inProgress is None:
+            inProgress = set()
+            setattr(self, "_derivationInProgress", inProgress)
+        if name in inProgress:
+            raise RuntimeError(
+                f'cyclic derivation of dynamic property "{name}" of {type(self).__name__}'
+            )
+        inProgress.add(name)
+        try:
+            value = recomputer(self)
+        finally:
+            inProgress.discard(name)
+        setattr(self, name, value)
+        return value
+
     @classmethod
     def _specify(cls, context, prop, value):
         # Normalize types of some built-in properties
@@ -567,7 +646,16 @@ class Constructible(Samplable):
         return self._withProperties(props, constProps=constProps)
 
     def _clearCaches(self):
-        for clearer in self._cache_clearers.values():
+        # This runs for every object on every time step of a dynamic simulation, and
+        # the overwhelming majority of the caches are empty when it does. So rather than
+        # calling each clearer (which would raise and catch an AttributeError for every
+        # absent value), test for the cached attributes directly and delete only those
+        # which are actually present.
+        cache = self.__dict__
+        for name in self._cachedAttrNames:
+            if name in cache:
+                del cache[name]
+        for clearer in self._otherCacheClearers:
             clearer(self)
 
     def dumpAsScenicCode(self, stream, skipConstProperties=True):
@@ -840,10 +928,9 @@ class Point(Constructible):
 
     # Points automatically convert to Vectors when needed
     def __getattr__(self, attr):
-        if hasattr(Vector, attr):
+        if attr not in type(self)._derivedDynamicProperties and hasattr(Vector, attr):
             return getattr(self.toVector(), attr)
-        else:
-            self.__getattribute__(attr)
+        return super().__getattr__(attr)
 
 
 ## OrientedPoint
@@ -883,9 +970,26 @@ class OrientedPoint(Point):
     """
 
     _scenic_properties = {
-        "yaw": PropertyDefault((), {"dynamic"}, lambda self: 0),
-        "pitch": PropertyDefault((), {"dynamic"}, lambda self: 0),
-        "roll": PropertyDefault((), {"dynamic"}, lambda self: 0),
+        # During simulations in which the simulator provides `orientation` directly, the
+        # Euler angles are instead derived from it on demand (see `_localOrientation`).
+        "yaw": PropertyDefault(
+            (),
+            {"dynamic"},
+            lambda self: 0,
+            dynamicValue=lambda self: self._localOrientation.eulerAngles[0],
+        ),
+        "pitch": PropertyDefault(
+            (),
+            {"dynamic"},
+            lambda self: 0,
+            dynamicValue=lambda self: self._localOrientation.eulerAngles[1],
+        ),
+        "roll": PropertyDefault(
+            (),
+            {"dynamic"},
+            lambda self: 0,
+            dynamicValue=lambda self: self._localOrientation.eulerAngles[2],
+        ),
         "parentOrientation": globalOrientation,
         "orientation": PropertyDefault(
             {"yaw", "pitch", "roll", "parentOrientation"},
@@ -893,6 +997,10 @@ class OrientedPoint(Point):
             lambda self: (
                 self.parentOrientation
                 * Orientation.fromEuler(self.yaw, self.pitch, self.roll)
+            ),
+            dynamicValue=lambda self: (
+                self.parentOrientation
+                * Orientation._fromEuler(self.yaw, self.pitch, self.roll)
             ),
         ),
         # Heading is equal to orientation.yaw, which is equal to self.yaw if this OrientedPoint's
@@ -906,6 +1014,10 @@ class OrientedPoint(Point):
                 if alwaysGlobalOrientation(self.parentOrientation)
                 else self.orientation.yaw
             ),
+            # During simulations we always go through `orientation`, since the Euler
+            # angles may themselves be derived from it (and if the parent orientation is
+            # the global one, the two share a single quaternion-to-Euler conversion).
+            dynamicValue=lambda self: self.orientation.yaw,
         ),
         "viewAngle": math.tau,  # Primarily for backwards compatibility. Set viewAngles instead.
         "viewAngles": PropertyDefault(
@@ -923,6 +1035,21 @@ class OrientedPoint(Point):
             ("headingStdDev",), set(), lambda self: (self.headingStdDev, 0, 0)
         ),
     }
+
+    @cached_property
+    def _localOrientation(self):
+        """This object's orientation in the frame given by :prop:`parentOrientation`.
+
+        Only used during simulations, to derive the Euler angles :prop:`yaw`,
+        :prop:`pitch`, and :prop:`roll` from :prop:`orientation` on demand. Cached
+        (and cleared each time step) so that reading more than one of the angles
+        requires only a single quaternion-to-Euler conversion.
+        """
+        parent = self.parentOrientation
+        orientation = self.orientation
+        if parent == globalOrientation:
+            return orientation
+        return Orientation(parent._inverseRotation * orientation.getRotation())
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)

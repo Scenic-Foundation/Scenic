@@ -1,7 +1,6 @@
 """Assorted utility functions."""
 
 import bz2
-import collections
 from contextlib import contextmanager
 import functools
 import itertools
@@ -51,6 +50,10 @@ def cached(oldMethod):
         except AttributeError:
             pass
 
+    # Record where the cached value is stored, so that callers clearing many caches at
+    # once can simply delete the attributes instead of calling each clearer in turn.
+    clearer._scenic_cache_attr = storageName
+
     wrapper._scenic_cache_clearer = clearer
 
     return wrapper
@@ -70,7 +73,9 @@ def cached_method(oldMethod):
 
     @functools.wraps(oldMethod)
     def wrapper(self, *args, **kwargs):
-        caches = _methodCaches.get(self, collections.defaultdict(dict))
+        caches = _methodCaches.get(self)
+        if caches is None:
+            caches = _methodCaches[self] = {}
         cachedMethod = caches.get(name)
         if cachedMethod is None:
             cachedMethod = functools.lru_cache(maxsize=None)(oldMethod)
@@ -78,7 +83,9 @@ def cached_method(oldMethod):
         return cachedMethod(self, *args, **kwargs)
 
     def clearer(self):
-        caches = _methodCaches.get(self, collections.defaultdict(dict))
+        caches = _methodCaches.get(self)
+        if caches is None:
+            return
         cachedMethod = caches.get(name)
         if cachedMethod:
             cachedMethod.cache_clear()

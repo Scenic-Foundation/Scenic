@@ -28,6 +28,7 @@ Major new features:
 Minor new features:
 
 	* Added a :ref:`minimum distance from` operator which computes the minimum distance between the occupied space of two objects.
+	* Simulator interfaces can set `Simulation.providesOrientation` to report object orientations directly instead of as Euler angles, which is faster (the angles are then derived only if used).
 
 Scenic 3.1.1
 ------------

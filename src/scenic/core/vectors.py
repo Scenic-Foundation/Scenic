@@ -379,6 +379,8 @@ class Orientation:
         return self.localAnglesFor(orientation)
 
     def __eq__(self, other):
+        if self is other:
+            return True
         if not isinstance(other, Orientation):
             return NotImplemented
         return numpy.array_equal(self.q, other.q) or numpy.array_equal(self.q, -other.q)
