@@ -19,6 +19,7 @@ from metadrive.component.traffic_participants.pedestrian import Pedestrian
 from metadrive.component.vehicle.vehicle_type import DefaultVehicle
 
 from scenic.core.simulators import InvalidScenarioError, SimulationCreationError
+from scenic.core.vectors import Orientation
 from scenic.domains.driving.actions import *
 from scenic.domains.driving.controllers import (
     PIDLateralController,
@@ -98,6 +99,8 @@ class MetaDriveSimulator(DrivingSimulator):
 
 
 class MetaDriveSimulation(DrivingSimulation):
+    providesOrientation = True
+
     def __init__(
         self,
         scene,
@@ -355,9 +358,7 @@ class MetaDriveSimulation(DrivingSimulation):
         angularVelocity = Vector(*md_ang_vel)
         angularSpeed = math.hypot(*md_ang_vel)
         converted_heading = utils.metaDriveToScenicHeading(metaDriveActor.heading_theta)
-        yaw, pitch, roll = obj.parentOrientation.globalToLocalAngles(
-            converted_heading, 0, 0
-        )
+        orientation = Orientation._fromHeading(converted_heading)
         elevation = 0
 
         values = dict(
@@ -366,9 +367,7 @@ class MetaDriveSimulation(DrivingSimulation):
             speed=speed,
             angularSpeed=angularSpeed,
             angularVelocity=angularVelocity,
-            yaw=yaw,
-            pitch=pitch,
-            roll=roll,
+            orientation=orientation,
             elevation=elevation,
         )
 

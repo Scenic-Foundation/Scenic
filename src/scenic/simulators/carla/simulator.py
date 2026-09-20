@@ -101,6 +101,8 @@ class CarlaSimulator(DrivingSimulator):
 
 
 class CarlaSimulation(DrivingSimulation):
+    providesOrientation = True
+
     def __init__(self, scene, client, tm, render, record, scenario_number, **kwargs):
         self.client = client
         self.world = self.client.get_world()
@@ -328,8 +330,7 @@ class CarlaSimulation(DrivingSimulation):
         speed = math.hypot(*velocity)
         angularSpeed = utils.carlaToScenicAngularSpeed(currAngVel)
         angularVelocity = utils.carlaToScenicAngularVel(currAngVel)
-        globalOrientation = utils.carlaToScenicOrientation(currRot)
-        yaw, pitch, roll = obj.parentOrientation.localAnglesFor(globalOrientation)
+        orientation = utils.carlaToScenicOrientation(currRot)
         elevation = utils.carlaToScenicElevation(currLoc)
 
         values = dict(
@@ -338,9 +339,7 @@ class CarlaSimulation(DrivingSimulation):
             speed=speed,
             angularSpeed=angularSpeed,
             angularVelocity=angularVelocity,
-            yaw=yaw,
-            pitch=pitch,
-            roll=roll,
+            orientation=orientation,
             elevation=elevation,
         )
         return values

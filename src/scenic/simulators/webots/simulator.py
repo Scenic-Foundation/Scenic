@@ -67,6 +67,8 @@ class WebotsSimulation(Simulation):
             directly; e.g. :scenic:`simulation().supervisor.setLabel({...})`.
     """
 
+    providesOrientation = True
+
     def __init__(self, scene, supervisor, coordinateSystem=ENU, *, timestep, **kwargs):
         self.supervisor = supervisor
         self.coordinateSystem = coordinateSystem
@@ -223,10 +225,9 @@ class WebotsSimulation(Simulation):
         angularSpeed = math.hypot(ax, ay, az)
 
         offsetOrientation = toOrientation(obj.rotationOffset)
-        globalOrientation = self.coordinateSystem.orientationToScenic(
+        orientation = self.coordinateSystem.orientationToScenic(
             webotsObj.getField("rotation").getSFRotation(), offsetOrientation
         )
-        yaw, pitch, roll = obj.parentOrientation.localAnglesFor(globalOrientation)
 
         values = dict(
             position=Vector(x, y, z),
@@ -234,9 +235,7 @@ class WebotsSimulation(Simulation):
             speed=speed,
             angularSpeed=angularSpeed,
             angularVelocity=Vector(ax, ay, az),
-            yaw=yaw,
-            pitch=pitch,
-            roll=roll,
+            orientation=orientation,
             elevation=z,
         )
 
