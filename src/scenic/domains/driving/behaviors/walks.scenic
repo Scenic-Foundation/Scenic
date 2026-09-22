@@ -10,9 +10,10 @@ from scenic.core.type_support import toVector
 from scenic.domains.driving.actions import *
 
 ## Pedestrian Behaviors
-def getBugPath(actor, path_ls, backgroundObjects, lookaheadTime, vehBuffer, nonVehBuffer):
+def getBugPath(actor, path_ls, backgroundObjects, lookaheadTime, vehBuffer, nonVehBuffer, pathDist):
     """ Refine a walking path using a Bug algorithm approach."""
     assert isinstance(path_ls, LineString)
+    self_pt = shapely.force_2d(ShapelyPoint(actor.position))
 
     # Lambda to compute buffer const.
     baseBuffer = shapely.minimum_bounding_radius(actor._boundingPolygon)
@@ -23,10 +24,14 @@ def getBugPath(actor, path_ls, backgroundObjects, lookaheadTime, vehBuffer, nonV
         for obj in backgroundObjects]
     def future_poly_helper(obj):
         planned_path, planned_speed = obj._planData
-        trimmed_path = shapely.ops.substring(planned_path, 0, planned_speed*lookaheadTime)
+        otherPlannedDist = planned_speed*lookaheadTime
+        if obj._boundingPolygon.distance(self_pt) > pathDist + 2*otherPlannedDist:
+            return None
+        trimmed_path = shapely.ops.substring(planned_path, 0, otherPlannedDist)
         return trimmed_path.buffer(bufferCalc(obj) + shapely.minimum_bounding_radius(obj._boundingPolygon))
     future_polys = [future_poly_helper(obj) for obj in backgroundObjects
         if not obj.isVehicle and getattr(obj, "_planData", None) is not None]
+    future_polys = list(filter(lambda p: p is not None, future_polys))
 
     obst_multi_poly = shapely.union_all(raw_obst_polys + future_polys)
 
@@ -40,10 +45,12 @@ def getBugPath(actor, path_ls, backgroundObjects, lookaheadTime, vehBuffer, nonV
     else:
         assert False
 
+    # Drop all obstacles that are not reasonably close
+    obst_polys = list(filter(lambda p: p.distance(self_pt) <= pathDist, obst_polys))
+
     # Refine path around obstacles, going from those with the largest boundary inwards
     # (to account for the rare case where an obstacle poly may be entirely contained in another)
     for obstacle_poly in sorted(obst_polys, key=lambda x: x.boundary.length, reverse=True):
-        self_pt = shapely.force_2d(ShapelyPoint(actor.position))
         target_pt = shapely.force_2d(ShapelyPoint(path_ls.coords[-1]))
 
         # TODO: Better handling so the pedestrian keeps walking towards goal inside a large poly.
@@ -209,7 +216,8 @@ behavior WalkPath(path, targetSpeed, *, avoidObstacles=True,
             continue
 
         # Modify path to route around objects.
-        path_ls = getBugPath(self, path_ls, background_objects, lookaheadTime, vehBuffer, nonVehBuffer)
+        pathDist = targetSpeed*replanTime*4 # Only path around objects that are reasonably close.
+        path_ls = getBugPath(self, path_ls, background_objects, lookaheadTime, vehBuffer, nonVehBuffer, pathDist)
         self._planData = (path_ls, targetSpeed) if path_ls else None
 
         # If path_ls is None, our goal is inside the danger zone and we can't

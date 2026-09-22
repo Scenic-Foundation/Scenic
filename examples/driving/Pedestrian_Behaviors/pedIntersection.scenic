@@ -1,7 +1,7 @@
 param map = localPath('../../../assets/maps/CARLA/Town03.xodr')
 model scenic.domains.driving.model
 
-param numPedestrians = 10
+param numPedestrians = 20
 
 targetIntersection = Uniform(*filter(lambda x: x.is3Way or x.is4Way, network.intersections))
 
