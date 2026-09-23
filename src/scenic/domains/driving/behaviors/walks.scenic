@@ -304,7 +304,7 @@ behavior Walk(targetSpeed=None, backwards=None,
         raise ValueError("relOffsetSigma and relNoiseSigma must be non-negative.")
     if relOffsetSigma > 0 or relNoiseSigma > 0:
         generator = SeededGenerator()
-        relOffset = generator.gauss(sigma=relOffsetSigma)
+        relOffset = generator.gauss(mu=0, sigma=relOffsetSigma)
     else:
         generator = None
         offset = 0
