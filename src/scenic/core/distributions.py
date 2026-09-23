@@ -1409,3 +1409,14 @@ class UniformDistribution(Distribution):
 
     def __repr__(self):
         return f"UniformDistribution({self.options!r})"
+
+
+class SeededGenerator(Distribution):
+    _deterministic = True
+
+    def __init__(self):
+        self.randomSeed = DiscreteRange(0, 2**64)
+        super().__init__(self.randomSeed)
+
+    def sampleGiven(self, value):
+        return random.Random(value[self.randomSeed])

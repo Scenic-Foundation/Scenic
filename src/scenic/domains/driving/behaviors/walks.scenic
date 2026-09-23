@@ -242,18 +242,72 @@ behavior WalkTo(target, targetSpeed, *, avoidObstacles=True):
     path = PolylineRegion(points=(self.position, toVector(target)))
     do WalkPath(path, targetSpeed, avoidObstacles=avoidObstacles)
 
-def mergePolylines(*geoms):
+def pairwise(iterable):
+    iterator = iter(iterable)
+    a = next(iterator, None)
+
+    for b in iterator:
+        yield a, b
+        a = b
+
+def noisePath(path, mu, sigma, width, generator, resampleLen=0.5, noiseSampleLen=10):
+    if generator is None:
+        return path
+    
+    # Resample the path's points so that the noise is consistently applied.
+    numPoints = max(math.ceil(path.length/resampleLen), 2)
+    resampleDists = np.linspace(0, path.length, numPoints)
+    resampledPoints = [path.pointAlongBy(d) for d in resampleDists]
+
+    # Generate the low frequency noise and map it back onto resampledPoints
+    noiseX, noiseY = zip(*[(i*noiseSampleLen, generator.gauss(mu=mu, sigma=sigma)) 
+                           for i in range(math.ceil(path.length/noiseSampleLen))])    
+    offsets = np.interp(resampleDists, noiseX, noiseY)
+    offsetPts = []
+    for (pt, next_pt), offset in zip(pairwise(resampledPoints+[None]), offsets):
+        if next_pt:
+            heading = pt.angleTo(next_pt)
+        offsetPts.append(toShapely(pt.offsetRotated(heading, Vector(0.5*width*offset, 0, 0))))
+
+    # if len(resampledPoints) > 4:
+    #     print(f"Offset: {mu}")
+    #     print(f"Sigma: {sigma}")
+    #     from scenic.core.geometry import plotPolygon
+    #     import matplotlib.pyplot as plt
+    #     plotPolygon(toShapely(path), plt, style="r")
+    #     plotPolygon(toShapely(PolylineRegion(polyline=shapely.geometry.LineString(offsetPts))), plt, style="b")
+    #     plt.axis('equal')
+    #     plt.show()
+
+    return PolylineRegion(polyline=shapely.geometry.LineString(offsetPts))
+
+
+def appendPath(*geoms):
     return PolylineRegion(
-        polyline=shapely.geometry.LineString(itertools.chain.from_iterable(geom.lineString.coords for geom in geoms))
+        polyline=shapely.geometry.LineString(
+            itertools.chain.from_iterable(geom.lineString.coords for geom in geoms)
+        )
     )
 
-behavior Walk(targetSpeed=None, backwards=None, avoidObstacles=True, pathHorizon=200):
+behavior Walk(targetSpeed=None, backwards=None,
+    avoidObstacles=True, pathHorizon=200,
+    relOffsetSigma=0.25, relNoiseSigma=0.05):
+
     if targetSpeed is None:
         # TODO: Should we move this to a property of pedestrians? (`baseWalkSpeed`?)
         targetSpeed = Range(0.9, 1.8) # From ~2mph to ~4mph
 
     if backwards is None:
         backwards = Uniform(True, False)
+
+    if relOffsetSigma < 0 or relNoiseSigma < 0:
+        raise ValueError("relOffsetSigma and relNoiseSigma must be non-negative.")
+    if relOffsetSigma > 0 or relNoiseSigma > 0:
+        generator = SeededGenerator()
+        relOffset = generator.gauss(sigma=relOffsetSigma)
+    else:
+        generator = None
+        offset = 0
 
     network = _model.network
 
@@ -271,6 +325,13 @@ behavior Walk(targetSpeed=None, backwards=None, avoidObstacles=True, pathHorizon
 
     # Initialize the walking path with the centerline of our target element
     currentPath = targetElement.centerline.reverse() if backwards else targetElement.centerline
+    currentPath = noisePath(
+        currentPath,
+        mu=relOffset,
+        sigma=relNoiseSigma,
+        width=(distance from targetElement.leftEdge.start to targetElement.rightEdge.start),
+        generator=generator,
+    )
 
     # TODO: Have pedestrians bias towards the appropriate side of the sidewalk based off road direction?
     while True:
@@ -302,9 +363,15 @@ behavior Walk(targetSpeed=None, backwards=None, avoidObstacles=True, pathHorizon
                         (distance from targetElement.centerline.end to self) 
                         < (distance from targetElement.centerline.start to self)
                     )
-                    currentPath = mergePolylines(
+                    currentPath = appendPath(
                         currentPath,
-                        targetElement.centerline.reverse() if backwards else targetElement.centerline
+                        noisePath(
+                            targetElement.centerline.reverse() if backwards else targetElement.centerline,
+                            mu=relOffset,
+                            sigma=relNoiseSigma,
+                            width=(distance from targetElement.leftEdge.start to targetElement.rightEdge.start),
+                            generator=generator,
+                        )
                     )
                 else:
                     # Walk to the start of the crosswalk
@@ -318,9 +385,15 @@ behavior Walk(targetSpeed=None, backwards=None, avoidObstacles=True, pathHorizon
                         0,
                         intermediatePath.distanceAlong(intermediatePoint)
                     )
-                    currentPath = mergePolylines(
+                    currentPath = appendPath(
                         currentPath,
-                        intermediatePath
+                        noisePath(
+                            intermediatePath,
+                            mu=relOffset,
+                            sigma=relNoiseSigma,
+                            width=(distance from nextSidewalk.leftEdge.start to nextSidewalk.rightEdge.start),
+                            generator=generator
+                        )
                     )
 
                     # Walk the length of the crosswalk
@@ -329,9 +402,15 @@ behavior Walk(targetSpeed=None, backwards=None, avoidObstacles=True, pathHorizon
                         (distance from targetCrossing.centerline.end to self)
                         < (distance from targetCrossing.centerline.start to self)
                     )
-                    currentPath = mergePolylines(
+                    currentPath = appendPath(
                         currentPath,
-                        targetElement.centerline.reverse() if backwards else targetElement.centerline
+                        noisePath(
+                            targetElement.centerline.reverse() if backwards else targetElement.centerline,
+                            mu=relOffset,
+                            sigma=relNoiseSigma,
+                            width=(distance from targetElement.leftEdge.start to targetElement.rightEdge.start),
+                            generator=generator
+                        )
                     )
             else:
                 break
