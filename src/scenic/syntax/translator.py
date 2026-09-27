@@ -21,8 +21,8 @@ the objects, distributions, etc. in the scenario. For details, see the function
 
 import ast
 import builtins
-import contextvars
 from contextlib import contextmanager
+import contextvars
 import dataclasses
 import hashlib
 import importlib
@@ -394,6 +394,7 @@ def allow_scenic_file_imports():
     finally:
         _scenic_file_imports_allowed.reset(token)
 
+
 ## Get Python names of various elements
 ## (for checking consistency between the translator and the veneer)
 
@@ -491,8 +492,10 @@ class ScenicFileFinder(importlib.abc.PathEntryFinder):
         # building the documentation (to allow autodoc to introspect them; this
         # requires careful setup in `docs/conf.py`).
         # See `purgeModulesUnsafeToCache` for the rationale.
-        if spec and spec.origin and any(
-            spec.origin.endswith(ext) for ext in scenicExtensions
+        if (
+            spec
+            and spec.origin
+            and any(spec.origin.endswith(ext) for ext in scenicExtensions)
         ):
             if buildingDocs or _scenic_file_imports_allowed.get():
                 return spec

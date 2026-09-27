@@ -222,9 +222,7 @@ def test_scenic_filename_does_not_shadow_python_package(tmp_path):
 
 def test_scenic_filename_does_not_shadow_installed_package(tmp_path):
     pytest.importorskip("metadrive")
-    map_path = (
-        Path(__file__).resolve().parents[2] / "assets/maps/CARLA/Town01.xodr"
-    )
+    map_path = Path(__file__).resolve().parents[2] / "assets/maps/CARLA/Town01.xodr"
     scenario = (
         f"param map = localPath('{map_path}')\n"
         "param use2DMap = True\n"
