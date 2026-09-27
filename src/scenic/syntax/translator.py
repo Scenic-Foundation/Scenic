@@ -21,6 +21,7 @@ the objects, distributions, etc. in the scenario. For details, see the function
 
 import ast
 import builtins
+import contextvars
 from contextlib import contextmanager
 import dataclasses
 import hashlib
@@ -372,7 +373,26 @@ usePruning = True
 # imports the implementations of the public language features)
 preamble = """\
 from scenic.syntax.veneer import *
+from scenic.syntax.translator import allow_scenic_file_imports
 """
+
+_scenic_file_imports_allowed = contextvars.ContextVar(
+    "_scenic_file_imports_allowed", default=False
+)
+
+
+@contextmanager
+def allow_scenic_file_imports():
+    """Allow resolving top-level :file:`.scenic` modules during a Scenic import.
+
+    Python code must not import Scenic files (see ``ScenicFileFinder``); Scenic's
+    own :keyword:`import` statements enable this briefly while the import runs.
+    """
+    token = _scenic_file_imports_allowed.set(True)
+    try:
+        yield
+    finally:
+        _scenic_file_imports_allowed.reset(token)
 
 ## Get Python names of various elements
 ## (for checking consistency between the translator and the veneer)
@@ -471,12 +491,13 @@ class ScenicFileFinder(importlib.abc.PathEntryFinder):
         # building the documentation (to allow autodoc to introspect them; this
         # requires careful setup in `docs/conf.py`).
         # See `purgeModulesUnsafeToCache` for the rationale.
-        if (
-            spec
-            and spec.origin
-            and not (veneer.isActive() or buildingDocs)
-            and any(spec.origin.endswith(ext) for ext in scenicExtensions)
+        if spec and spec.origin and any(
+            spec.origin.endswith(ext) for ext in scenicExtensions
         ):
+            if buildingDocs or _scenic_file_imports_allowed.get():
+                return spec
+            if veneer.isActive() and "." in fullname:
+                return spec
             return None
         return spec
 

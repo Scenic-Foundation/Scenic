@@ -201,3 +201,37 @@ def test_malformed_model():
 def test_missing_model():
     with pytest.raises(InvalidScenarioError):
         compileScenic("model __no_such_package__")
+
+
+def test_scenic_filename_does_not_shadow_python_package(tmp_path):
+    (tmp_path / "types.scenic").write_text(
+        'raise AssertionError("stdlib types was shadowed by a Scenic file")\n'
+    )
+    scenario = "model tests.syntax.types_shadow_world\n" "ego = new Object\n"
+    (tmp_path / "foo.scenic").write_text(scenario)
+    (tmp_path / "bar.scenic").write_text(scenario)
+    oldDirectory = os.getcwd()
+    os.chdir(tmp_path)
+    try:
+        scenarioFromFile("foo.scenic")
+        scenarioFromFile("bar.scenic")
+    finally:
+        os.chdir(oldDirectory)
+
+
+def test_scenic_filename_does_not_shadow_installed_package(tmp_path):
+    pytest.importorskip("metadrive")
+    scenario = (
+        "model scenic.simulators.metadrive.model\n"
+        "param use2DMap = True\n"
+        "ego = new Car\n"
+    )
+    (tmp_path / "metadrive.scenic").write_text(scenario)
+    (tmp_path / "foo.scenic").write_text(scenario)
+    oldDirectory = os.getcwd()
+    os.chdir(tmp_path)
+    try:
+        scenarioFromFile("foo.scenic")
+        scenarioFromFile("metadrive.scenic")
+    finally:
+        os.chdir(oldDirectory)
