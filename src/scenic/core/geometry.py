@@ -101,6 +101,34 @@ def pointIsInCone(point, base, heading, angle):
     return abs(va) <= angle / 2.0
 
 
+def sectorAABB(center, radius, heading, angle, z=0):
+    """Axis-aligned bounding box of a circular sector.
+
+    The sector uses the same heading convention as `SectorRegion` and
+    `pointIsInCone`: centerline at ``heading``, subtending ``angle``.
+    """
+    cx, cy = center[0], center[1]
+    if angle >= math.tau - 0.001:
+        return ((cx - radius, cy - radius, z), (cx + radius, cy + radius, z))
+
+    half_angle = angle / 2.0
+    base = heading + (math.pi / 2.0)
+    xs = [cx]
+    ys = [cy]
+
+    def add_at(angle):
+        xs.append(cx + radius * math.cos(angle))
+        ys.append(cy + radius * math.sin(angle))
+
+    add_at(base - half_angle)
+    add_at(base + half_angle)
+    for cardinal in (0.0, math.pi / 2, math.pi, 3 * math.pi / 2):
+        if abs(normalizeAngle(cardinal - base)) <= half_angle:
+            add_at(cardinal)
+
+    return ((min(xs), min(ys), z), (max(xs), max(ys), z))
+
+
 def distanceToLine(point, a, b):
     lx, ly = b[0] - a[0], b[1] - a[1]
     norm = math.hypot(lx, ly)
