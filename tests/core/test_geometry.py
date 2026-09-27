@@ -81,6 +81,17 @@ def test_object_boundingPolygon_planar():
     assert verts[3] == pytest.approx((-0.2, -2.4))
 
 
+def test_sectorAABB_full_circle():
+    aabb = geometry.sectorAABB((1, 2), 3, 0, math.tau)
+    assert aabb == ((-2, -1, 0), (4, 5, 0))
+
+
+def test_sectorAABB_quarter_sector():
+    aabb = geometry.sectorAABB((0, 0), 1, -math.pi / 2, math.pi / 2)
+    assert aabb[0] == pytest.approx((0, -1, 0))
+    assert aabb[1] == pytest.approx((1, 0, 0))
+
+
 def test_object_boundingPolygon_3D():
     obj = Object._with(
         width=1,
