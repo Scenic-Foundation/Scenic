@@ -6,6 +6,7 @@ system of modular scenarios is tested in 'test_modular.py'.
 """
 
 import os.path
+from pathlib import Path
 import sys
 
 import pytest
@@ -221,9 +222,13 @@ def test_scenic_filename_does_not_shadow_python_package(tmp_path):
 
 def test_scenic_filename_does_not_shadow_installed_package(tmp_path):
     pytest.importorskip("metadrive")
+    map_path = (
+        Path(__file__).resolve().parents[2] / "assets/maps/CARLA/Town01.xodr"
+    )
     scenario = (
-        "model scenic.simulators.metadrive.model\n"
+        f"param map = localPath('{map_path}')\n"
         "param use2DMap = True\n"
+        "model scenic.simulators.metadrive.model\n"
         "ego = new Car\n"
     )
     (tmp_path / "metadrive.scenic").write_text(scenario)
@@ -231,7 +236,7 @@ def test_scenic_filename_does_not_shadow_installed_package(tmp_path):
     oldDirectory = os.getcwd()
     os.chdir(tmp_path)
     try:
-        scenarioFromFile("foo.scenic")
-        scenarioFromFile("metadrive.scenic")
+        scenarioFromFile("foo.scenic", mode2D=True)
+        scenarioFromFile("metadrive.scenic", mode2D=True)
     finally:
         os.chdir(oldDirectory)
