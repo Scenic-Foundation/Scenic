@@ -1,5 +1,3 @@
-import xml.etree.ElementTree as ET
-
 from scenic.formats.opendrive.xodr_parser import RoadMap
 
 DEFAULT_PLAN_VIEW = """<planView>
@@ -95,71 +93,6 @@ def write_xodr(
     )
 
 
-def write_xodr_junction(tmp_path, connecting_lanes_xml):
-    support = "\n".join(
-        (
-            lane_xml(-1, pred=-1, succ=-1),
-            lane_xml(-2, pred=-2, succ=-2),
-        )
-    )
-
-    def road_xml(id_, junction, x, lanes_xml, link_xml, extras=""):
-        return f"""  <road name="Road {id_}" length="20" id="{id_}" junction="{junction}">
-    {link_xml}
-    {extras}
-    <planView>
-      <geometry s="0" x="{x}" y="0" hdg="0" length="20"><line/></geometry>
-    </planView>
-    <lanes>
-      <laneSection s="0">
-        <center><lane id="0" type="none" level="false"/></center>
-        <right>
-{lanes_xml}
-        </right>
-      </laneSection>
-    </lanes>
-  </road>"""
-
-    return _write_xodr(
-        tmp_path,
-        "\n".join(
-            (
-                road_xml(
-                    6,
-                    -1,
-                    -20,
-                    support,
-                    '<link><successor elementType="junction" elementId="5"/></link>',
-                ),
-                road_xml(
-                    7,
-                    5,
-                    0,
-                    connecting_lanes_xml,
-                    """<link>
-      <predecessor elementType="road" elementId="6" contactPoint="end"/>
-      <successor elementType="road" elementId="8" contactPoint="start"/>
-    </link>""",
-                    '<type s="0" type="motorway"/>',
-                ),
-                road_xml(
-                    8,
-                    -1,
-                    20,
-                    support,
-                    '<link><predecessor elementType="junction" elementId="5"/></link>',
-                ),
-                """  <junction name="J5" id="5" type="direct">
-    <connection id="0" incomingRoad="6" connectingRoad="7" contactPoint="start">
-      <laneLink from="-1" to="-1"/>
-      <laneLink from="-2" to="-2"/>
-    </connection>
-  </junction>""",
-            )
-        ),
-    )
-
-
 def parse_scenic_network(
     tmp_path,
     road_extras="",
@@ -168,32 +101,19 @@ def parse_scenic_network(
     lanes_xml=None,
     lane_side="right",
     lane_sections_xml=None,
-    junction_lanes_xml=None,
 ):
-    if junction_lanes_xml is not None:
-        path = write_xodr_junction(tmp_path, junction_lanes_xml)
-    else:
-        path = write_xodr(
-            tmp_path,
-            road_extras=road_extras,
-            plan_view=plan_view,
-            lanes_xml=DEFAULT_LANE if lanes_xml is None else lanes_xml,
-            lane_side=lane_side,
-            lane_sections_xml=lane_sections_xml,
-        )
+    path = write_xodr(
+        tmp_path,
+        road_extras=road_extras,
+        plan_view=plan_view,
+        lanes_xml=DEFAULT_LANE if lanes_xml is None else lanes_xml,
+        lane_side=lane_side,
+        lane_sections_xml=lane_sections_xml,
+    )
     road_map = RoadMap()
     road_map.parse(path)
     road_map.calculate_geometry(num=5, calc_intersect=True)
     return road_map.toScenicNetwork()
-
-
-def scenic_road(network, road_id=7):
-    return next(road for road in network.allRoads if road.id == road_id)
-
-
-def type_tags_from_road_extras(road_extras):
-    root = ET.fromstring(f"<root>{road_extras}</root>")
-    return frozenset(elem.get("type") for elem in root.iter("type") if elem.get("type"))
 
 
 def assert_road_tags_propagated_to_groups(road):

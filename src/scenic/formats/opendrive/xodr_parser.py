@@ -90,18 +90,6 @@ def speed_limit_ranges_from_type_records(type_records, road_length):
     return _speed_limit_ranges_from_s_speed_records(s_speed_records, road_length)
 
 
-def speed_limit_ranges_from_lane_records(speed_records, section_length):
-    """Build ``(s_start, speed_mps)`` ranges from lane ``<speed>`` records.
-
-    ``speed_records`` are ordered ``(sOffset, speed_mps)`` pairs relative to the
-    lane section start; ``section_length`` is the lane section length in meters.
-    """
-    if not speed_records:
-        return []
-
-    return _speed_limit_ranges_from_s_speed_records(speed_records, section_length)
-
-
 def _speed_limit_at(ranges, s):
     """Get the speed active at *s* from nonempty, ordered speed ranges."""
     speed = ranges[0][1]
@@ -110,27 +98,6 @@ def _speed_limit_at(ranges, s):
             break
         speed = range_speed
     return speed
-
-
-def effective_speed_limit_ranges(road_ranges, lane_ranges, section_s0, section_length):
-    """Merge road and lane speed ranges for one OpenDRIVE lane section.
-
-    Returns ``(s_start, speed_mps)`` ranges with *s* relative to the lane section
-    start. When lane speeds are present they fully replace road speeds.
-    """
-    if lane_ranges:
-        return lane_ranges
-    if not road_ranges:
-        return []
-
-    section_end = section_s0 + section_length
-    ranges = [(0.0, _speed_limit_at(road_ranges, section_s0))]
-    ranges.extend(
-        (range_start - section_s0, speed)
-        for range_start, speed in road_ranges[1:]
-        if section_s0 < range_start < section_end
-    )
-    return ranges
 
 
 def speed_limits_for_s_interval(ranges, s_start, s_end):
@@ -147,38 +114,6 @@ def speed_limits_for_s_interval(ranges, s_start, s_end):
     )
     speeds.discard(None)
     return frozenset(speeds)
-
-
-def assign_speed_limit_from_ranges(element, ranges, warn_context=None):
-    """Set ``speedLimit`` and ``speedLimitRanges`` from effective speed ranges."""
-    if not ranges:
-        return
-
-    speeds = {speed for _, speed in ranges if speed is not None}
-
-    element.speedLimit = min(speeds) if speeds else None
-    element.speedLimitRanges = tuple(ranges)
-    if len(speeds) > 1 and warn_context is not None:
-        speeds_text = ", ".join(f"{speed:.4g} m/s" for speed in sorted(speeds))
-        warn(
-            f"{warn_context}: spans multiple speed limits {{{speeds_text}}};"
-            f" using minimum {element.speedLimit:.4g} m/s"
-        )
-
-
-def assign_semantic_tags(road_map):
-    """Populate each ``Road.extra_tags`` from the type of its junction.
-
-    A road belonging to a junction (``road.junction`` equals the junction id)
-    inherits that junction's semantic tags; all other roads get no extra tags.
-    """
-    junction_tags = {jid: junction.tags for jid, junction in road_map.junctions.items()}
-    for road in road_map.roads.values():
-        if road.junction is not None:
-            # road.junction is the raw OpenDRIVE id string; junctions are keyed by int.
-            road.extra_tags = junction_tags.get(int(road.junction), frozenset())
-        else:
-            road.extra_tags = frozenset()
 
 
 def buffer_union(polys, tolerance=0.01):
@@ -1017,21 +952,46 @@ class Road:
             if section_speed_limit is not None and section.speedLimit is None:
                 section.speedLimit = section_speed_limit
             section_length = s_end - s_start
+            if speed_ranges:
+                section_end = s_start + section_length
+                road_ranges = [(0.0, _speed_limit_at(speed_ranges, s_start))]
+                road_ranges.extend(
+                    (range_start - s_start, speed)
+                    for range_start, speed in speed_ranges[1:]
+                    if s_start < range_start < section_end
+                )
+            else:
+                road_ranges = []
             for id_, lane_section in laneSections.items():
                 lane = sec.drivable_lanes[id_]
-                lane_ranges = speed_limit_ranges_from_lane_records(
-                    lane.speed_records, section_length
-                )
-                effective_ranges = effective_speed_limit_ranges(
-                    speed_ranges, lane_ranges, s_start, section_length
-                )
-                if effective_ranges:
-                    assign_speed_limit_from_ranges(
-                        lane_section,
-                        effective_ranges,
-                        warn_context=(
-                            f"road {self.id_} lane {id_} section s=[{s_start},{s_end})"
-                        ),
+                # Unspecified parts of a lane keep the road speed; a lane <speed>
+                # overrides from its sOffset until the next one or the section end.
+                if not lane.speed_records:
+                    effective_ranges = road_ranges
+                else:
+                    first_offset = lane.speed_records[0][0]
+                    records = [r for r in road_ranges if r[0] < first_offset]
+                    records.extend(
+                        rec for rec in lane.speed_records if rec[0] < section_length
+                    )
+                    effective_ranges = (
+                        _speed_limit_ranges_from_s_speed_records(records, section_length)
+                        if records
+                        else road_ranges
+                    )
+                if not effective_ranges:
+                    continue
+                speeds = {speed for _, speed in effective_ranges if speed is not None}
+                lane_section.speedLimit = min(speeds) if speeds else None
+                lane_section.speedLimitRanges = tuple(effective_ranges)
+                if len(speeds) > 1:
+                    speeds_text = ", ".join(
+                        f"{speed:.4g} m/s" for speed in sorted(speeds)
+                    )
+                    warn(
+                        f"road {self.id_} lane {id_} section s=[{s_start},{s_end}):"
+                        f" spans multiple speed limits {{{speeds_text}}};"
+                        f" using minimum {lane_section.speedLimit:.4g} m/s"
                     )
 
             last_section = section
@@ -1976,7 +1936,15 @@ class RoadMap:
 
     def toScenicNetwork(self):
         assert self.intersection_region is not None
-        assign_semantic_tags(self)
+        # Connecting roads inherit semantic tags from their junction type.
+        junction_tags = {jid: junction.tags for jid, junction in self.junctions.items()}
+        for road in self.roads.values():
+            if road.junction is not None:
+                # road.junction is the raw OpenDRIVE id string;
+                # junctions are keyed by int.
+                road.extra_tags = junction_tags.get(int(road.junction), frozenset())
+            else:
+                road.extra_tags = frozenset()
 
         # Prepare registry of network elements
         allElements = {}
