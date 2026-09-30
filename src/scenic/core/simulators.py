@@ -1219,17 +1219,9 @@ class SimulatorGroup:
         rand_generator = numpy.random.default_rng(random.getrandbits(32))
 
         # Initialize processes
-        class LoggedProcess(multiprocessing.Process):
-            def __init__(self, *args, **kwargs):
-                super().__init__(*args, **kwargs)
-                self.outLog = io.StringIO()
-
-            def run(self):
-                with redirect_stdout(self.outLog), redirect_stderr(self.outLog):
-                    return super().run()
-
         processes = []
         for simulatorParams in self.simulatorParams:
+            logQueue = multiprocessing.Queue()
             params = (
                 scenarioCreationData,
                 self.simulatorClass,
@@ -1240,7 +1232,9 @@ class SimulatorGroup:
                 self.returnTrajectory,
                 self.returnBytes,
             )
-            processes.append(LoggedProcess(target=simulatorGroupHelper, args=params))
+            process = multiprocessing.Process(target=simulatorGroupHelper, args=params)
+            process.loqQueue = logQueue
+            processes.append(process)
 
         # Job creation utilities
         remainingJobs = 0
@@ -1272,8 +1266,16 @@ class SimulatorGroup:
 
             for p in monitoredProcesses:
                 if not p.is_alive():
+                    # Write queue messages to a string buffer
+                    buffer = io.StringIO()
+                    while True:
+                        try:
+                            buffer.write(p.logQueue.get_nowait())
+                        except queue.Empty:
+                            break
+
                     raise RuntimeError(
-                        f"Worker process {p.pid} has died with the following error:\n{p.outLog.readlines()}\n"
+                        f"Worker process {p.pid} has died with the following error:\n{buffer.readlines()}\n"
                     )
 
         def monitoringQueueGet(q):
@@ -1340,6 +1342,9 @@ class SimulatorGroup:
                     warnings.warn(f"Forcefully killing SimulatorGroup worker: {p.pid}")
                     p.terminate()
 
+            for p in processes:
+                p.logQueue.close()
+
             jobQueue.close()
             resultQueue.close()
 
@@ -1350,12 +1355,28 @@ def simulatorGroupHelper(
     simulatorParams,
     jobQueue,
     resultQueue,
+    logQueue,
     returnFinalState,
     returnTrajectory,
     returnBytes,
 ):
     # Prevent resultQueue from blocking us from exiting the process.
     resultQueue.cancel_join_thread()
+
+    # Setup queue writer to log stdout/stderr.
+    class QueueWriter:
+        def __init__(self, queue):
+            self.queue = queue
+
+        def write(self, message):
+            if message:
+                self.queue.put(message)
+
+        def flush(self):
+            pass
+
+    sys.stdout = QueueWriter(logQueue)
+    sys.stderr = QueueWriter(logQueue)
 
     from scenic.syntax.translator import _scenarioFromStream
 
