@@ -1222,10 +1222,10 @@ class SimulatorGroup:
         class LoggedProcess(multiprocessing.Process):
             def __init__(self, *args, **kwargs):
                 super().__init__(*args, **kwargs)
-                self.errorLog = io.StringIO()
+                self.outLog = io.StringIO()
 
             def run(self):
-                with redirect_stderr(self.errorLog):
+                with redirect_stdout(self.outLog), redirect_stderr(self.outLog):
                     return super().run()
 
         processes = []
@@ -1273,7 +1273,7 @@ class SimulatorGroup:
             for p in monitoredProcesses:
                 if not p.is_alive():
                     raise RuntimeError(
-                        f"Worker process {p.pid} has died with the following error:\n{p.errorLog}\n"
+                        f"Worker process {p.pid} has died with the following error:\n{p.outLog.readlines()}\n"
                     )
 
         def monitoringQueueGet(q):
