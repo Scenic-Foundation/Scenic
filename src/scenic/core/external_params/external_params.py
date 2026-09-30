@@ -194,7 +194,7 @@ class ExternalParameter(Distribution):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.sampler = None
-        self.isTimeSeries = False
+        self.isSeries = False
         import scenic.syntax.veneer as veneer  # TODO improve?
 
         veneer.registerExternalParameter(self)
@@ -253,7 +253,7 @@ class ExternalParameterConverter:
         raise NotImplementedError
 
 
-class TimeSeriesParameter:
+class SeriesParameter:
     def __init__(self, callback):
         self._callback = callback
         self._lastSimulation = None
@@ -270,16 +270,16 @@ class TimeSeriesParameter:
 
         if veneer.currentSimulation.currentTime <= self._lastTime:
             raise RuntimeError(
-                "Attempted `getSample` for a TimeSeries external parameter twice in one timestep."
+                "Attempted `getSample` for a Series external parameter twice in one timestep."
             )
 
         self._lastTime = veneer.currentSimulation.currentTime
         return self._callback()
 
 
-def TimeSeries(param):
+def Series(param):
     if not isinstance(param, ExternalParameter):
-        raise TypeError("Cannot turn a non `ExternalParameter` into a time series")
+        raise TypeError("Cannot turn a non `ExternalParameter` into a series")
 
-    param.isTimeSeries = True
+    param.isSeries = True
     return param
