@@ -1268,10 +1268,11 @@ class SimulatorGroup:
             for p in monitoredProcesses:
                 if not p.is_alive():
                     # Write queue messages to a string buffer
+                    breakpoint()
                     buffer = io.StringIO()
                     while True:
                         try:
-                            buffer.write(p.loqQueue.get_nowait())
+                            buffer.write(p.loqQueue.get(block=False))
                         except queue.Empty:
                             break
 
