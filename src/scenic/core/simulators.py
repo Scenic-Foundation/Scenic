@@ -1272,7 +1272,7 @@ class SimulatorGroup:
                     buffer = io.StringIO()
                     while True:
                         try:
-                            buffer.write(p.logQueue.get(block=False))
+                            buffer.write(p.logQueue.get(block=True, timeout=5))
                         except queue.Empty:
                             break
 
