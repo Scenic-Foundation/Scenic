@@ -3823,7 +3823,9 @@ class PolylineRegion(Region):
                 for line in polyline.geoms:
                     assert len(line.coords) >= 2
             else:
-                raise ValueError("tried to create PolylineRegion from non-LineString")
+                raise ValueError(
+                    f"tried to create PolylineRegion from non-LineString ({type(polyline)})"
+                )
             self.lineString = polyline
             self.points = None
         else:
