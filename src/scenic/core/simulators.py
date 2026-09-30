@@ -1240,9 +1240,7 @@ class SimulatorGroup:
                 self.returnTrajectory,
                 self.returnBytes,
             )
-            processes.append(
-                multiprocessing.LoggedProcess(target=simulatorGroupHelper, args=params)
-            )
+            processes.append(LoggedProcess(target=simulatorGroupHelper, args=params))
 
         # Job creation utilities
         remainingJobs = 0
