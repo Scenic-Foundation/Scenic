@@ -87,8 +87,8 @@ in general may be approximated so that VerifAI can handle them -- see
 `VerifaiParameter.withPrior` for details.
 
 To set a time bound when using VerifAI's dynamic sampling, set the ``timeBound``
-global parameter to value representing the upper bound on the number of samples
-the sampler should account for in a series. For example::
+global parameter to value representing the upper bound on the number of timesteps
+the sampler should account for. For example::
 
     param timeBound = 250
 
