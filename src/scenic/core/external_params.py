@@ -87,8 +87,8 @@ in general may be approximated so that VerifAI can handle them -- see
 `VerifaiParameter.withPrior` for details.
 
 To set a time bound when using VerifAI's dynamic sampling, set the ``timeBound``
-global parameter to value representing the upper bound on the number of timesteps
-the sampler should account for. For example::
+global parameter to value representing the upper bound on the number of samples
+the sampler should account for in a series. For example::
 
     param timeBound = 250
 
@@ -210,12 +210,12 @@ class VerifaiSampler(ExternalSampler):
             if param.probs is not None:
                 usingProbs = True
 
-        if not self._verifaiDynamic and any(param.isTimeSeries for param in self.params):
-            raise RuntimeError("TimeSeries not supported for VerifAI versions < 3.0")
+        if not self._verifaiDynamic and any(param.isSeries for param in self.params):
+            raise RuntimeError("Series not supported for VerifAI versions < 3.0")
 
-        if timeBound == 0 and any(param.isTimeSeries for param in self.params):
+        if timeBound == 0 and any(param.isSeries for param in self.params):
             warnings.warn(
-                "TimeSeries external parameter used but no global parameter `timeBound` is specified. "
+                "Series external parameter used but no global parameter `timeBound` is specified. "
                 "(If using VerifAI’s ScenicSampler, set its maxSteps option)."
             )
 
@@ -227,8 +227,8 @@ class VerifaiSampler(ExternalSampler):
             {
                 self.nameForParam(index): (
                     verifai.features.Feature(param.domain)
-                    if not param.isTimeSeries
-                    else verifai.features.TimeSeriesFeature(param.domain)
+                    if not param.isSeries
+                    else verifai.features.SeriesFeature(param.domain)
                 )
                 for index, param in enumerate(self.params)
             },
@@ -326,7 +326,7 @@ class VerifaiSampler(ExternalSampler):
         return self._lastDynamicSample
 
     def valueFor(self, param):
-        if not param.isTimeSeries:
+        if not param.isSeries:
             if self._verifaiDynamic:
                 sampleTarget = self.cachedSample.staticSample
             else:
@@ -341,7 +341,7 @@ class VerifaiSampler(ExternalSampler):
                     self.nameForParam(param.index),
                 )
             )
-            return TimeSeriesParameter(callback)
+            return SeriesParameter(callback)
 
     @staticmethod
     def nameForParam(i):
@@ -355,7 +355,7 @@ class ExternalParameter(Distribution):
     def __init__(self):
         super().__init__()
         self.sampler = None
-        self.isTimeSeries = False
+        self.isSeries = False
         import scenic.syntax.veneer as veneer  # TODO improve?
 
         veneer.registerExternalParameter(self)
@@ -378,7 +378,7 @@ class ExternalParameter(Distribution):
         return value
 
 
-class TimeSeriesParameter:
+class SeriesParameter:
     def __init__(self, callback):
         self._callback = callback
         self._lastSimulation = None
@@ -395,18 +395,18 @@ class TimeSeriesParameter:
 
         if veneer.currentSimulation.currentTime <= self._lastTime:
             raise RuntimeError(
-                "Attempted `getSample` for a TimeSeries external parameter twice in one timestep."
+                "Attempted `getSample` for a Series external parameter twice in one timestep."
             )
 
         self._lastTime = veneer.currentSimulation.currentTime
         return self._callback()
 
 
-def TimeSeries(param):
+def Series(param):
     if not isinstance(param, ExternalParameter):
-        raise TypeError("Cannot turn a non `ExternalParameter` into a time series")
+        raise TypeError("Cannot turn a non `ExternalParameter` into a series")
 
-    param.isTimeSeries = True
+    param.isSeries = True
     return param
 
 
