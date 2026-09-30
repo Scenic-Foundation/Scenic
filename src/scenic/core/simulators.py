@@ -26,6 +26,7 @@ import signal
 import sys
 import threading
 import time
+import traceback
 import types
 import warnings
 
@@ -1421,6 +1422,8 @@ def simulatorGroupHelper(
                     simulationResult = None
 
                 resultQueue.put((jobId, simulationResult))
-    finally:
+    except Exception as e:
+        logQueue.put(traceback.format_exc())
         logQueue.close()
         logQueue.join_thread()
+        raise
