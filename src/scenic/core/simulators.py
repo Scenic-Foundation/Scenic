@@ -1234,7 +1234,7 @@ class SimulatorGroup:
                 self.returnBytes,
             )
             process = multiprocessing.Process(target=simulatorGroupHelper, args=params)
-            process.loqQueue = logQueue
+            process.logQueue = logQueue
             processes.append(process)
 
         # Job creation utilities
