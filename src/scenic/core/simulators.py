@@ -13,7 +13,7 @@ simulation as a `SimulationResult` object).
 import abc
 from collections import OrderedDict, defaultdict
 from collections.abc import Iterable
-from contextlib import contextmanager
+from contextlib import contextmanager, redirect_stderr, redirect_stdout
 import enum
 import io
 import math
@@ -1095,7 +1095,6 @@ class SimulatorGroup:
             ``len(simulatorParams)`` should equal ``numWorkers``.
         bufferSize: An optional integer indicating the size of the job buffer. If ``None``, the value is
             set to ``2 * numWorkers``.
-        mute: Whether or not to mute stdOut and stdErr in the worker processes.
         returnFinalState: Whether or not returned `SimulationResult` objects should contain the ``finalState``
             property. Set to ``False`` by default to minimize overhead.
         returnTrajectory: Whether or not returned `SimulationResult` objects should contain the ``trajectry``
@@ -1108,7 +1107,6 @@ class SimulatorGroup:
         simulatorClass,
         simulatorParams=None,
         bufferSize=None,
-        mute=True,
         returnFinalState=False,
         returnTrajectory=False,
         returnBytes=False,
@@ -1222,6 +1220,15 @@ class SimulatorGroup:
         rand_generator = numpy.random.default_rng(random.getrandbits(32))
 
         # Initialize processes
+        class LoggedProcess(multiprocessing.Process):
+            def __init__(self, *args, **kwargs):
+                super().__init__(*args, **kwargs)
+                self.errorLog = io.StringIO()
+
+            def run(self):
+                with redirect_stderr(self.errorLog):
+                    return super().run()
+
         processes = []
         for simulatorParams in self.simulatorParams:
             params = (
@@ -1230,13 +1237,12 @@ class SimulatorGroup:
                 simulatorParams,
                 jobQueue,
                 resultQueue,
-                self.mute,
                 self.returnFinalState,
                 self.returnTrajectory,
                 self.returnBytes,
             )
             processes.append(
-                multiprocessing.Process(target=simulatorGroupHelper, args=params)
+                multiprocessing.LoggedProcess(target=simulatorGroupHelper, args=params)
             )
 
         # Job creation utilities
@@ -1270,7 +1276,7 @@ class SimulatorGroup:
             for p in monitoredProcesses:
                 if not p.is_alive():
                     raise RuntimeError(
-                        f"Worker process {p.pid} has died. Consider creating the SimulatorGroup with mute=False to diagnose the issue."
+                        f"Worker process {p.pid} has died with the following error:\n{p.errorLog}\n"
                     )
 
         def monitoringQueueGet(q):
@@ -1347,15 +1353,10 @@ def simulatorGroupHelper(
     simulatorParams,
     jobQueue,
     resultQueue,
-    mute,
     returnFinalState,
     returnTrajectory,
     returnBytes,
 ):
-    if mute:
-        sys.stdout = open(os.devnull, "w")
-        sys.stderr = open(os.devnull, "w")
-
     # Prevent resultQueue from blocking us from exiting the process.
     resultQueue.cancel_join_thread()
 
