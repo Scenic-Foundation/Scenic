@@ -35,12 +35,12 @@ class VerifaiSampler(ExternalSampler):
             if param.probs is not None:
                 usingProbs = True
 
-        if not self._verifaiDynamic and any(param.isTimeSeries for param in self.params):
-            raise RuntimeError("TimeSeries not supported for VerifAI versions < 3.0")
+        if not self._verifaiDynamic and any(param.isSeries for param in self.params):
+            raise RuntimeError("Series not supported for VerifAI versions < 3.0")
 
-        if timeBound == 0 and any(param.isTimeSeries for param in self.params):
+        if timeBound == 0 and any(param.isSeries for param in self.params):
             warnings.warn(
-                "TimeSeries external parameter used but no global parameter `timeBound` is specified. "
+                "Series external parameter used but no global parameter `timeBound` is specified. "
                 "(If using VerifAI’s ScenicSampler, set its maxSteps option)."
             )
 
@@ -52,8 +52,8 @@ class VerifaiSampler(ExternalSampler):
             {
                 self.nameForParam(index): (
                     verifai.features.Feature(param.domain)
-                    if not param.isTimeSeries
-                    else verifai.features.TimeSeriesFeature(param.domain)
+                    if not param.isSeries
+                    else verifai.features.SeriesFeature(param.domain)
                 )
                 for index, param in enumerate(self.params)
             },
@@ -151,7 +151,7 @@ class VerifaiSampler(ExternalSampler):
         return self._lastDynamicSample
 
     def valueFor(self, param):
-        if not param.isTimeSeries:
+        if not param.isSeries:
             if self._verifaiDynamic:
                 sampleTarget = self.cachedSample.staticSample
             else:
@@ -166,7 +166,7 @@ class VerifaiSampler(ExternalSampler):
                     self.nameForParam(param.index),
                 )
             )
-            return TimeSeriesParameter(callback)
+            return SeriesParameter(callback)
 
     @staticmethod
     def nameForParam(i):

@@ -6,7 +6,7 @@ from typing import Any
 
 import pytest
 
-from scenic.core.errors import ScenicSyntaxError
+from scenic.core.errors import ScenicParseError, ScenicSyntaxError
 from scenic.syntax.ast import *
 from scenic.syntax.parser import parse_string
 
@@ -3168,3 +3168,20 @@ class TestOperator:
                 assert True
             case _:
                 assert False
+
+
+def test_fstring_conversion_specifiers():
+    for conv_char, expected in [("r", ord("r")), ("s", ord("s")), ("a", ord("a"))]:
+        mod = parse_string_helper(
+            f"""
+            x = 3
+            param y = f"{{x!{conv_char}}}"
+            """
+        )
+        joined = mod.body[1].elts[0].value
+        assert joined.values[0].conversion == expected
+
+
+def test_fstring_invalid_conversion_specifier():
+    with pytest.raises(ScenicParseError, match="invalid conversion character"):
+        parse_string_helper('y = f"{x!z}"')

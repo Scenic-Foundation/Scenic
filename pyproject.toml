@@ -97,7 +97,7 @@ dev = [
 
 [project.urls]
 Homepage = "https://scenic-lang.org/"
-Repository = "https://github.com/BerkeleyLearnVerify/Scenic"
+Repository = "https://github.com/Scenic-Foundation/Scenic"
 Documentation = "https://docs.scenic-lang.org"
 
 [project.scripts]

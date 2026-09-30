@@ -123,6 +123,22 @@ To start CARLA, run the command :command:`./CarlaUE4.sh` in your CARLA folder.
 Once CARLA is running, you can run dynamic Scenic scenarios following the instructions in :ref:`the dynamics tutorial <dynamics_running_examples>`.
 
 
+.. _isaac_sim:
+
+Isaac Sim / Isaac Lab
+---------------------
+
+Scenic has an experimental interface to the `Isaac Sim <https://developer.nvidia.com/isaac/sim>`_ and `Isaac Lab <https://developer.nvidia.com/isaac/lab>`_ robotics simulators from NVIDIA.
+It has been tested with Isaac Sim 5.1 and 6.0, and Isaac Lab 2.3.
+See the :file:`examples/isaacsim` folder for documentation and example Scenic scenarios using the interface.
+
+
+.. note::
+
+	This interface is experimental and the APIs it provides are subject to change.
+	We plan to finalize the interface in the next minor release of Scenic.
+
+
 Webots
 ------
 

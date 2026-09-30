@@ -14,9 +14,9 @@ Our :doc:`publications <publications>` page lists additional papers using Scenic
    The syntax of Scenic 3 is not completely backwards-compatible with earlier versions of Scenic, which were used in our papers prior to 2023.
    See :doc:`new` for a list of syntax changes and new features.
    Old code can likely be easily ported; you can also install older releases if necessary from
-   `GitHub <https://github.com/BerkeleyLearnVerify/Scenic/releases>`__.
+   `GitHub <https://github.com/Scenic-Foundation/Scenic/releases>`__.
 
-If you have any problems using Scenic, please submit an issue to `our GitHub repository <https://github.com/BerkeleyLearnVerify/Scenic>`_ or ask a question on `our community forum <https://forum.scenic-lang.org/>`_.
+If you have any problems using Scenic, please submit an issue to `our GitHub repository <https://github.com/Scenic-Foundation/Scenic>`_ or ask a question on `our community forum <https://forum.scenic-lang.org/>`_.
 
 Table of Contents
 =================

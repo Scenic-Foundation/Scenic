@@ -888,7 +888,7 @@ VISIBLE_DISTANCES = [1, 25, 50]
 @pytest.mark.exhaustive
 @pytest.mark.parametrize(
     "hAngle,vAngle,visibleDistance",
-    itertools.product(H_ANGLES, V_ANGLES, VISIBLE_DISTANCES),
+    list(itertools.product(H_ANGLES, V_ANGLES, VISIBLE_DISTANCES)),
 )
 def test_viewRegion_full(hAngle, vAngle, visibleDistance):
     viewRegion_test_helper(hAngle, vAngle, visibleDistance)
@@ -981,7 +981,7 @@ INVALID_INTERSECTS = (
 
 
 @pytest.mark.slow
-@pytest.mark.parametrize("A,B", itertools.combinations(REGIONS, 2), ids=regions_id)
+@pytest.mark.parametrize("A,B", list(itertools.combinations(REGIONS, 2)), ids=regions_id)
 def test_region_combinations(A, B):
     region_a = A
     region_b = B

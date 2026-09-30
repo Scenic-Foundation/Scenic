@@ -20,6 +20,8 @@ Unreleased
 
 Major new features:
 
+	* Added an :ref:`interface <isaac_sim>` to the Isaac Sim and Isaac Lab robotics simulators.
+
 	* Added `toOpenScenario`, which exports completed driving domain simulations as OpenScenarioXML files.
 
 

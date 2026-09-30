@@ -73,8 +73,8 @@ import time
 year = time.strftime("%Y", time.gmtime())
 
 project = "Scenic"
-copyright = f"2020-{year}, Daniel J. Fremont"
-author = "Daniel J. Fremont, Eric Vin, Edward Kim, Tommaso Dreossi, Shromona Ghosh, Xiangyu Yue, Alberto L. Sangiovanni-Vincentelli, and Sanjit A. Seshia"
+copyright = f"2026-{year}, Scenic Foundation"
+author = "Scenic Foundation"
 
 
 # -- General configuration ---------------------------------------------------
@@ -108,7 +108,17 @@ add_module_names = False
 autosummary_generate = True
 autodoc_inherit_docstrings = False
 autodoc_member_order = "bysource"
-autodoc_mock_imports = ["carla", "lgsvl", "metadrive"]
+autodoc_mock_imports = [
+    "carla",
+    "gymnasium",
+    "isaaclab",
+    "lgsvl",
+    "metadrive",
+    # Modules to skip in autosummary
+    "scenic.simulators.isaac.empty_env_cfg",
+    "scenic.simulators.isaac.remote.__main__",
+    "scenic.simulators.isaac.scripts",
+]
 autodoc_typehints = "description"
 autodoc_type_aliases = {
     "Vectorlike": "`scenic.domains.driving.roads.Vectorlike`",
