@@ -1345,7 +1345,7 @@ class SimulatorGroup:
                     p.terminate()
 
             for p in processes:
-                p.loqQueue.close()
+                p.logQueue.close()
 
             jobQueue.close()
             resultQueue.close()
