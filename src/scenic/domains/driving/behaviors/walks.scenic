@@ -291,7 +291,8 @@ def appendPath(*geoms):
 
 behavior Walk(targetSpeed=None, backwards=None,
     avoidObstacles=True, pathHorizon=200,
-    relOffsetSigma=0.25, relNoiseSigma=0.05):
+    relOffsetSigma=0.25, relNoiseSigma=0.05,
+    generator=None): # TODO: Remove the generator hack.
 
     if targetSpeed is None:
         # TODO: Should we move this to a property of pedestrians? (`baseWalkSpeed`?)
@@ -303,7 +304,7 @@ behavior Walk(targetSpeed=None, backwards=None,
     if relOffsetSigma < 0 or relNoiseSigma < 0:
         raise ValueError("relOffsetSigma and relNoiseSigma must be non-negative.")
     if relOffsetSigma > 0 or relNoiseSigma > 0:
-        generator = SeededGenerator()
+        generator = SeededGenerator() if generator is None else generator
         relOffset = generator.gauss(mu=0, sigma=relOffsetSigma)
     else:
         generator = None

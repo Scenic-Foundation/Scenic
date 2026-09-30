@@ -13,6 +13,6 @@ pedestrianStartZone = network.sidewalkRegion.intersect(
         CircularRegion(targetIntersection.midpoint, 60)
     )
 for _ in range(globalParameters.numPedestrians):
-    new Pedestrian in pedestrianStartZone, with behavior Walk(), with regionContainedIn None
+    new Pedestrian in pedestrianStartZone, with behavior Walk(generator=SeededGenerator()), with regionContainedIn None
 
 terminate after 30 seconds

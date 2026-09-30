@@ -82,7 +82,7 @@ class OptunaSampler(ExternalSampler):
         return self.study.ask()
 
     def valueFor(self, param, value):
-        if param.isTimeSeries:
+        if param.isSeries:
             raise ValueError(
                 "OptunaSampler does currently support timeSeries parameters."
             )
