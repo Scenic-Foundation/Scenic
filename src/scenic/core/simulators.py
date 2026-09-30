@@ -1268,7 +1268,6 @@ class SimulatorGroup:
             for p in monitoredProcesses:
                 if not p.is_alive():
                     # Write queue messages to a string buffer
-                    breakpoint()
                     buffer = io.StringIO()
                     while True:
                         try:
