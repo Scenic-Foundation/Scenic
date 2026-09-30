@@ -1228,6 +1228,7 @@ class SimulatorGroup:
                 simulatorParams,
                 jobQueue,
                 resultQueue,
+                logQueue,
                 self.returnFinalState,
                 self.returnTrajectory,
                 self.returnBytes,
