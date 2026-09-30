@@ -1275,6 +1275,7 @@ class SimulatorGroup:
                         except queue.Empty:
                             break
 
+                    breakpoint()
                     raise RuntimeError(
                         f"Worker process {p.pid} has died with the following error:\n{buffer.getvalue()}\n"
                     )
