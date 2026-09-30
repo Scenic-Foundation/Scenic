@@ -382,20 +382,22 @@ behavior Walk(targetSpeed=None, backwards=None,
                     )
                     intermediatePath = nextSidewalk.centerline.reverse() if sidewalkBackwards else nextSidewalk.centerline
                     intermediatePoint = intermediatePath.closestPointTo(targetCrossing.centerline)
-                    intermediatePath = intermediatePath.substring(
-                        0,
-                        intermediatePath.distanceAlong(intermediatePoint)
-                    )
-                    currentPath = appendPath(
-                        currentPath,
-                        noisePath(
-                            intermediatePath,
-                            mu=relOffset,
-                            sigma=relNoiseSigma,
-                            width=(distance from nextSidewalk.leftEdge.start to nextSidewalk.rightEdge.start),
-                            generator=generator
+                    intermediatePathLength = intermediatePath.distanceAlong(intermediatePoint)
+                    if intermediatePathLength > 0.1:
+                        intermediatePath = intermediatePath.substring(
+                            0,
+                            intermediatePathLength
                         )
-                    )
+                        currentPath = appendPath(
+                            currentPath,
+                            noisePath(
+                                intermediatePath,
+                                mu=relOffset,
+                                sigma=relNoiseSigma,
+                                width=(distance from nextSidewalk.leftEdge.start to nextSidewalk.rightEdge.start),
+                                generator=generator
+                            )
+                        )
 
                     # Walk the length of the crosswalk
                     targetElement = targetCrossing
