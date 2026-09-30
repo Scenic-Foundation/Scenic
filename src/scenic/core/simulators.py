@@ -1130,7 +1130,6 @@ class SimulatorGroup:
         self.bufferSize = 2 * numWorkers if bufferSize is None else bufferSize
         if self.bufferSize <= 1:
             raise ValueError("`bufferSize` must be at least 1.")
-        self.mute = mute
         self.returnFinalState = returnFinalState
         self.returnTrajectory = returnTrajectory
         self.returnBytes = returnBytes

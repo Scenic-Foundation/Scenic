@@ -62,7 +62,6 @@ def run_benchmark_parallel(path, params, *, numWorkers):
             "render": False,
             "real_time": False,
         },
-        mute=False,
     )
     sim_group.simulateBatch(scenario=scenario, scenes=scene_stream)
 

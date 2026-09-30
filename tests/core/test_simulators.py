@@ -163,9 +163,7 @@ def test_simulator_group():
                 200, numWorkers=numWorkers, serialized=serialized
             )
 
-        sim_group = SimulatorGroup(
-            numWorkers=2, simulatorClass=DummySimulator, mute=False
-        )
+        sim_group = SimulatorGroup(numWorkers=2, simulatorClass=DummySimulator)
 
         simulate_params = {"maxSteps": 10}
 
@@ -205,7 +203,7 @@ def test_simulator_group_deterministic():
     scenic.setSeed(seed)
     scenes, _ = scenario.generateBatch(200, serialized=True)
 
-    sim_group = SimulatorGroup(numWorkers=4, simulatorClass=DummySimulator, mute=False)
+    sim_group = SimulatorGroup(numWorkers=4, simulatorClass=DummySimulator)
     simulate_params = {"maxSteps": 10}
 
     results1 = tuple(
@@ -218,7 +216,7 @@ def test_simulator_group_deterministic():
     scenic.setSeed(seed)
     scenes, _ = scenario.generateBatch(200, serialized=True)
 
-    sim_group = SimulatorGroup(numWorkers=4, simulatorClass=DummySimulator, mute=False)
+    sim_group = SimulatorGroup(numWorkers=4, simulatorClass=DummySimulator)
     simulate_params = {"maxSteps": 10}
 
     results2 = tuple(
@@ -266,7 +264,6 @@ def test_simulator_group_cleanup():
         numWorkers=1,
         simulatorClass=BlockingSimulator,
         simulatorParams={"cleanupEvent": cleanupEvent},
-        mute=False,
     )
 
     with pytest.raises(TestException):
