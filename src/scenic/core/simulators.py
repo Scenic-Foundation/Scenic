@@ -1271,7 +1271,7 @@ class SimulatorGroup:
                     buffer = io.StringIO()
                     while True:
                         try:
-                            buffer.write(p.logQueue.get_nowait())
+                            buffer.write(p.loqQueue.get_nowait())
                         except queue.Empty:
                             break
 
@@ -1344,7 +1344,7 @@ class SimulatorGroup:
                     p.terminate()
 
             for p in processes:
-                p.logQueue.close()
+                p.loqQueue.close()
 
             jobQueue.close()
             resultQueue.close()
