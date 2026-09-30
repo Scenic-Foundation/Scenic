@@ -121,7 +121,7 @@ __all__ = (
     "VerifaiRange",
     "VerifaiDiscreteRange",
     "VerifaiOptions",
-    "TimeSeries",
+    "Series",
     "File",
     "Files",
     # Constructible types
@@ -203,7 +203,7 @@ from scenic.core.dynamics.guards import (
 from scenic.core.dynamics.invocables import BlockConclusion, runTryInterrupt
 from scenic.core.dynamics.scenarios import DynamicScenario
 from scenic.core.external_params import (
-    TimeSeries,
+    Series,
     VerifaiDiscreteRange,
     VerifaiOptions,
     VerifaiParameter,
