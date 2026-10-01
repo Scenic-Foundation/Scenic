@@ -11,12 +11,26 @@ simulation as a `SimulationResult` object).
 """
 
 import abc
-from collections import defaultdict
+from collections import OrderedDict, defaultdict
+from collections.abc import Iterable
+from contextlib import contextmanager, redirect_stderr, redirect_stdout
 import enum
+import io
 import math
+import multiprocessing
 import numbers
+import os
+import queue
+import random
+import signal
+import sys
+import threading
 import time
+import traceback
 import types
+import warnings
+
+import numpy
 
 from scenic.core.distributions import RejectionException
 from scenic.core.dynamics import GuardViolation, RejectSimulationException
@@ -31,6 +45,7 @@ from scenic.core.object_types import (
 )
 from scenic.core.requirements import RequirementType
 from scenic.core.serialization import Serializer
+from scenic.core.utils import setSeed
 from scenic.core.vectors import Vector
 
 
@@ -70,8 +85,9 @@ class Simulator(abc.ABC):
     necessary cleanup.
     """
 
-    def __init__(self):
+    def __init__(self, verbosity=None):
         self._destroyed = False
+        self.verbosity = verbosity if verbosity else errors.verbosityLevel
 
     def simulate(
         self,
@@ -138,9 +154,8 @@ class Simulator(abc.ABC):
                 (rarely) and its security implications.
 
         Returns:
-            A `Simulation` object representing the completed simulation, or `None` if no
-            simulation satisfying the requirements could be found within
-            **maxIterations** iterations.
+            An initialized simulation, or `None` if no simulation satisfying
+            the requirements could be found within **maxIterations** iterations.
 
         Raises:
             SimulationCreationError: if an error occurred while trying to run a
@@ -171,7 +186,7 @@ class Simulator(abc.ABC):
                 "(the destroy() method has already been called)"
             )
         if verbosity is None:
-            verbosity = errors.verbosityLevel
+            verbosity = self.verbosity
 
         # Repeatedly run simulations until we find one satisfying the requirements
         iterations = 0
@@ -198,6 +213,53 @@ class Simulator(abc.ABC):
             )
         return simulation
 
+    @contextmanager
+    def simulateStepped(
+        self,
+        scene,
+        maxSteps=None,
+        *,
+        name="SteppedSimulation",
+        timestep=None,
+        verbosity=None,
+        replay=None,
+        enableReplay=True,
+        enableDivergenceCheck=False,
+        divergenceTolerance=0,
+        continueAfterDivergence=False,
+        allowPickle=False,
+    ):
+        if self._destroyed:
+            raise RuntimeError(
+                "simulator cannot run additional simulations "
+                "(the destroy() method has already been called)"
+            )
+        if verbosity is None:
+            verbosity = self.verbosity
+
+        simulation = self.createSimulation(
+            scene,
+            maxSteps=maxSteps,
+            name=name,
+            verbosity=verbosity,
+            timestep=timestep,
+            replay=replay,
+            enableReplay=enableReplay,
+            enableDivergenceCheck=enableDivergenceCheck,
+            divergenceTolerance=divergenceTolerance,
+            continueAfterDivergence=continueAfterDivergence,
+            allowPickle=allowPickle,
+        )
+        try:
+            yield simulation
+        except (RejectSimulationException, RejectionException, GuardViolation) as e:
+            # This simulation will be thrown out, but attach it to the exception
+            # to aid in debugging.
+            e.simulation = self
+            raise
+        finally:
+            simulation.cleanup()
+
     def replay(self, scene, replay, **kwargs):
         """Replay a simulation.
 
@@ -214,13 +276,14 @@ class Simulator(abc.ABC):
         if verbosity >= 2:
             print(f"  Starting simulation {name}...")
         try:
-            simulation = self.createSimulation(
+            with self.simulateStepped(
                 scene,
                 maxSteps=maxSteps,
                 name=name,
                 verbosity=verbosity,
                 **kwargs,
-            )
+            ) as simulation:
+                simulation._run()
         except (RejectSimulationException, RejectionException, GuardViolation) as e:
             if verbosity >= 2:
                 print(
@@ -269,6 +332,12 @@ class Simulator(abc.ABC):
         if self._destroyed:
             raise RuntimeError("Simulator.destroy() called twice")
         self._destroyed = True
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        self.destroy()
 
 
 class Simulation(abc.ABC):
@@ -347,10 +416,13 @@ class Simulation(abc.ABC):
         self.currentTime = 0
         self.timestep = 1 if timestep is None else float(timestep)
         self.verbosity = verbosity
+        self.maxSteps = maxSteps
         self.name = name
         self.worker_num = 0
 
         self.actionSequence = []
+
+        self._cleaned = False
 
         # Prepare to save or load a replay.
         self.initializeReplay(replay, enableReplay, enableDivergenceCheck, allowPickle)
@@ -364,170 +436,211 @@ class Simulation(abc.ABC):
             import scenic.syntax.veneer as veneer
 
             veneer.beginSimulation(self)
-            dynamicScenario = self.scene.dynamicScenario
+            self.dynamicScenario = self.scene.dynamicScenario
 
             # Create objects and perform simulator-specific initialization.
             self.setup()
 
             # Initialize the top-level dynamic scenario.
-            dynamicScenario._start()
+            self.dynamicScenario._start()
 
             # Update all objects in case the simulator has adjusted any dynamic
             # properties during setup.
             self.updateObjects()
 
-            # Run the simulation.
-            terminationType, terminationReason = self._run(dynamicScenario, maxSteps)
-
-            # Stop all remaining scenarios.
-            # (and reject if some 'require eventually' condition was never satisfied)
-            for scenario in tuple(reversed(veneer.runningScenarios)):
-                scenario._stop("simulation terminated")
-
-            # Record finally-recorded values.
-            values = dynamicScenario._evaluateRecordedExprs(
-                RequirementType.recordFinal, self.currentTime
-            )
-            for name, val in values.items():
-                self.records[name] = val
-
-            # Package up simulation results into a compact object.
-            result = SimulationResult(
-                self.trajectory,
-                self.actionSequence,
-                terminationType,
-                terminationReason,
-                self.records,
-            )
-            self.result = result
-        except (RejectSimulationException, RejectionException, GuardViolation) as e:
+        except Exception as e:
             # This simulation will be thrown out, but attach it to the exception
             # to aid in debugging.
+            self.cleanup()
             e.simulation = self
             raise
-        finally:
-            self.destroy()
-            for obj in self.objects:
-                disableDynamicProxyFor(obj)
-            for agent in self.agents:
-                if agent.behavior and agent.behavior._isRunning:
-                    agent.behavior._stop()
-            # If the simulation was terminated by an exception (including rejections),
-            # some scenarios may still be running; we need to clean them up without
-            # checking their requirements, which could raise rejection exceptions.
-            for scenario in tuple(reversed(veneer.runningScenarios)):
-                scenario._stop("exception", quiet=True)
-            veneer.endSimulation(self)
 
-    def _run(self, dynamicScenario, maxSteps):
+    def _run(self):
         assert self.currentTime == 0
 
         while True:
-            if self.verbosity >= 3:
-                print(f"    Time step {self.currentTime}:")
+            self.advance()
 
-            # Run compose blocks of compositional scenarios
-            # (and check if any requirements defined therein fail)
-            # N.B. if the top-level scenario completes, we don't immediately end
-            # the simulation since we need to check if any monitors reject first.
-            terminationReason = dynamicScenario._step()
-            terminationType = TerminationType.scenarioComplete
+            if self.result:
+                return
 
-            # Update observations of objects with sensors
-            for obj in self.objects:
-                if not obj.sensors:
-                    continue
-                obj.observations.update(
-                    {key: sensor.getObservation() for key, sensor in obj.sensors.items()}
+    def advance(self):
+        if self.result or self._cleaned:
+            raise TerminatedSimulationException()
+
+        if self.verbosity >= 3:
+            print(f"    Time step {self.currentTime}:")
+
+        # Run compose blocks of compositional scenarios
+        # (and check if any requirements defined therein fail)
+        # N.B. if the top-level scenario completes, we don't immediately end
+        # the simulation since we need to check if any monitors reject first.
+        terminationReason = self.dynamicScenario._step()
+        terminationType = TerminationType.scenarioComplete
+
+        # Update observations of objects with sensors
+        for obj in self.objects:
+            if not obj.sensors:
+                continue
+            obj.observations.update(
+                {key: sensor.getObservation() for key, sensor in obj.sensors.items()}
+            )
+
+        # Record current state of the simulation
+        self._recordCurrentState()
+
+        # Run monitors
+        newReason = self.dynamicScenario._runMonitors()
+        if newReason is not None:
+            terminationReason = newReason
+            terminationType = TerminationType.terminatedByMonitor
+
+        # Check if users manually closed out display for simulator
+        if "Dead" in str(self.screen):
+            return (
+                TerminationType.terminatedByUser,
+                "user manually terminated simulation",
+            )
+
+        # "Always" and scenario-level requirements have been checked;
+        # now safe to terminate if the top-level scenario has finished,
+        # a monitor requested termination, or we've hit the timeout
+        if terminationReason is not None:
+            return self.terminateSimulation(terminationType, terminationReason)
+        terminationReason = self.dynamicScenario._checkSimulationTerminationConditions()
+        if terminationReason is not None:
+            if terminationReason.ty is RequirementType.terminateAfter:
+                return self.terminateSimulation(
+                    TerminationType.timeLimit, terminationReason
                 )
-
-            # Record current state of the simulation
-            self.recordCurrentState()
-
-            # Run monitors
-            newReason = dynamicScenario._runMonitors()
-            if newReason is not None:
-                terminationReason = newReason
-                terminationType = TerminationType.terminatedByMonitor
-
-            # Check if users manually closed out display for simulator
-            if "Dead" in str(self.screen):
-                return (
-                    TerminationType.terminatedByUser,
-                    "user manually terminated simulation",
+            else:
+                return self.terminateSimulation(
+                    TerminationType.simulationTerminationCondition,
+                    terminationReason,
                 )
+        if self.maxSteps and self.currentTime >= self.maxSteps:
+            return self.terminateSimulation(
+                TerminationType.timeLimit, f"reached time limit ({self.maxSteps} steps)"
+            )
 
-            # "Always" and scenario-level requirements have been checked;
-            # now safe to terminate if the top-level scenario has finished,
-            # a monitor requested termination, or we've hit the timeout
-            if terminationReason is not None:
-                return terminationType, terminationReason
-            terminationReason = dynamicScenario._checkSimulationTerminationConditions()
-            if terminationReason is not None:
-                return TerminationType.simulationTerminationCondition, terminationReason
-            if maxSteps and self.currentTime >= maxSteps:
-                return TerminationType.timeLimit, f"reached time limit ({maxSteps} steps)"
+        # Clear lastActions for all objects
+        for obj in self.objects:
+            obj.lastActions = tuple()
 
-            # Clear lastActions for all objects
-            for obj in self.objects:
-                obj.lastActions = tuple()
+        # Update agents with any objects that now have behaviors (and are not already agents)
+        self.agents += [
+            obj for obj in self.objects if obj.behavior and obj not in self.agents
+        ]
 
-            # Update agents with any objects that now have behaviors (and are not already agents)
-            self.agents += [
-                obj for obj in self.objects if obj.behavior and obj not in self.agents
-            ]
+        # Compute the actions of the agents in this time step
+        allActions = defaultdict(tuple)
+        schedule = self.scheduleForAgents()
+        if not set(self.agents) == set(schedule):
+            raise RuntimeError("Simulator schedule does not contain all agents")
+        for agent in schedule:
+            # If agent doesn't have a behavior right now, continue
+            if not agent.behavior:
+                continue
 
-            # Compute the actions of the agents in this time step
-            allActions = defaultdict(tuple)
-            schedule = self.scheduleForAgents()
-            if not set(self.agents) == set(schedule):
-                raise RuntimeError("Simulator schedule does not contain all agents")
-            for agent in schedule:
-                # If agent doesn't have a behavior right now, continue
-                if not agent.behavior:
-                    continue
+            # Run the agent's behavior to get its actions
+            actions = agent.behavior._step()
+            if actions is None:
+                actions = tuple()
 
-                # Run the agent's behavior to get its actions
-                actions = agent.behavior._step()
-
-                # Handle pseudo-actions marking the end of a simulation/scenario
-                if isinstance(actions, _EndSimulationAction):
-                    return TerminationType.terminatedByBehavior, str(actions)
-                elif isinstance(actions, _EndScenarioAction):
-                    scenario = actions.scenario
-                    if scenario._isRunning:
-                        scenario._stop(actions)
-                    if scenario is dynamicScenario:
-                        # Top-level scenario was terminated, so whole simulation will end.
-                        return TerminationType.terminatedByBehavior, str(actions)
-                    actions = ()
-
-                # Check ordinary actions for compatibility
-                assert isinstance(actions, tuple)
-                if len(actions) == 1 and isinstance(actions[0], (list, tuple)):
-                    actions = tuple(actions[0])
-                if not self.actionsAreCompatible(agent, actions):
-                    raise InvalidScenarioError(
-                        f"agent {agent} tried incompatible action(s) {actions}"
+            # Handle pseudo-actions marking the end of a simulation/scenario
+            if isinstance(actions, _EndSimulationAction):
+                return self.terminateSimulation(
+                    TerminationType.terminatedByBehavior, str(actions)
+                )
+            elif isinstance(actions, _EndScenarioAction):
+                scenario = actions.scenario
+                if scenario._isRunning:
+                    scenario._stop(actions)
+                if scenario is self.dynamicScenario:
+                    # Top-level scenario was terminated, so whole simulation will end.
+                    return self.terminateSimulation(
+                        TerminationType.terminatedByBehavior, str(actions)
                     )
+                actions = ()
 
-                # Save actions for execution below
-                allActions[agent] = actions
+            # Check ordinary actions for compatibility
+            assert isinstance(actions, tuple)
+            if len(actions) == 1 and isinstance(actions[0], (list, tuple)):
+                actions = tuple(actions[0])
+            if not self.actionsAreCompatible(agent, actions):
+                raise InvalidScenarioError(
+                    f"agent {agent} tried incompatible action(s) {actions}"
+                )
 
-                # Log lastActions
+            # Save actions for execution below
+            allActions[agent] = actions
+
+            # Log lastActions
+            agent.lastActions = actions
+
+        # Execute the actions
+        if self.verbosity >= 3:
+            for agent, actions in allActions.items():
+                print(f"      Agent {agent} takes action(s) {actions}")
                 agent.lastActions = actions
+        self.actionSequence.append(allActions)
+        self.executeActions(allActions)
 
-            # Execute the actions
-            if self.verbosity >= 3:
-                for agent, actions in allActions.items():
-                    print(f"      Agent {agent} takes action(s) {actions}")
-            self.actionSequence.append(allActions)
-            self.executeActions(allActions)
+        # Run the simulation for a single step and read its state back into Scenic
+        self.step()
+        self.currentTime += 1
+        self.updateObjects()
 
-            # Run the simulation for a single step and read its state back into Scenic
-            self.step()
-            self.currentTime += 1
-            self.updateObjects()
+    def terminateSimulation(self, terminationType, terminationReason):
+        import scenic.syntax.veneer as veneer
+
+        # Stop all remaining scenarios (and handle their `record final` statements;
+        # also reject if some `require eventually` condition was never satisfied).
+        for scenario in tuple(reversed(veneer.runningScenarios)):
+            scenario._stop("simulation terminated")
+
+        # Serialize simulation to bytes for inclusion in results.
+        replayBytes = (
+            self.scene.scenario.simulationToBytes(self) if self._replayOut else None
+        )
+
+        # Package up simulation results into a compact object.
+        result = SimulationResult(
+            self.name,
+            self.trajectory,
+            self.actionSequence,
+            terminationType,
+            terminationReason,
+            self.records,
+            self.scene.externalSamplerInfo,
+            replayBytes,
+        )
+        self.result = result
+
+        self.cleanup()
+
+    def cleanup(self):
+        # No need to repeat cleanup if we've already done it
+        if self._cleaned:
+            return
+
+        # Remember that we have cleaned up.
+        self._cleaned = True
+
+        import scenic.syntax.veneer as veneer
+
+        self.destroy()
+        for obj in self.objects:
+            disableDynamicProxyFor(obj)
+        for agent in self.agents:
+            if agent.behavior and agent.behavior._isRunning:
+                agent.behavior._stop()
+        # If the simulation was terminated by an exception (including rejections),
+        # some scenarios may still be running; we need to clean them up without
+        # checking their requirements, which could raise rejection exceptions.
+        for scenario in tuple(reversed(veneer.runningScenarios)):
+            scenario._stop("exception", quiet=True)
+        veneer.endSimulation(self)
 
     def setup(self):
         """Set up the simulation to run in the simulator.
@@ -596,25 +709,18 @@ class Simulation(abc.ABC):
         """
         raise NotImplementedError
 
-    def recordCurrentState(self):
-        dynamicScenario = self.scene.dynamicScenario
-        records = self.records
-
-        # Record initially-recorded values
-        step = self.currentTime
-        if step == 0:
-            values = dynamicScenario._evaluateRecordedExprs(
-                RequirementType.recordInitial, step
-            )
-            for name, val in values.items():
-                records[name] = val
-
-        # Record time-series values
-        values = dynamicScenario._evaluateRecordedExprs(RequirementType.record, step)
-        for name, val in values.items():
-            records[name].append((self.currentTime, val))
+    def _recordCurrentState(self):
+        # Record values of `record initial` and `record` statements.
+        # (calls _record and _recordTimeSeries below)
+        self.scene.dynamicScenario._updateRecords()
 
         self.trajectory.append(self.currentState())
+
+    def _record(self, name, value):
+        self.records[name] = value
+
+    def _recordTimeSeries(self, name, value):
+        self.records[name].append((self.currentTime, value))
 
     def replayCanContinue(self):
         if not self.replaying:
@@ -939,6 +1045,7 @@ class SimulationResult:
     """Result of running a simulation.
 
     Attributes:
+        name: Name of the simulation, if any
         trajectory: A tuple giving for each time step the simulation's 'state': by
             default the positions of every object. See `Simulation.currentState`.
         finalState: The last 'state' of the simulation, as above.
@@ -951,7 +1058,18 @@ class SimulationResult:
             values its expression took during the simulation.
     """
 
-    def __init__(self, trajectory, actions, terminationType, terminationReason, records):
+    def __init__(
+        self,
+        name,
+        trajectory,
+        actions,
+        terminationType,
+        terminationReason,
+        records,
+        externalSamplerInfo,
+        replayBytes,
+    ):
+        self.name = name
         self.trajectory = tuple(trajectory)
         assert self.trajectory
         self.finalState = self.trajectory[-1]
@@ -959,3 +1077,352 @@ class SimulationResult:
         self.terminationType = terminationType
         self.terminationReason = str(terminationReason)
         self.records = dict(records)
+        self.externalSamplerInfo = externalSamplerInfo
+        self.replayBytes = replayBytes
+
+
+class TerminatedSimulationException(Exception):
+    pass
+
+
+class SimulatorGroup:
+    """A group of simulators for running parallel simulations.
+
+    Args:
+        numWorkers: Number of workers in this group.
+        simulatorClass: The simulator class this group is composed of.
+        simulatorParams: An optional single or list of kwarg dictionaries to be passed as parameters
+            when creating the simulators in this group. If simulatorParams is a list of dicts,
+            ``len(simulatorParams)`` should equal ``numWorkers``.
+        bufferSize: An optional integer indicating the size of the job buffer. If ``None``, the value is
+            set to ``2 * numWorkers``.
+        returnFinalState: Whether or not returned `SimulationResult` objects should contain the ``finalState``
+            property. Set to ``False`` by default to minimize overhead.
+        returnTrajectory: Whether or not returned `SimulationResult` objects should contain the ``trajectry``
+            property. Set to ``False`` by default to minimize overhead.
+    """
+
+    def __init__(
+        self,
+        numWorkers,
+        simulatorClass,
+        simulatorParams=None,
+        bufferSize=None,
+        returnFinalState=False,
+        returnTrajectory=False,
+        returnBytes=False,
+        timeout=30,
+    ):
+        if numWorkers <= 0:
+            raise ValueError("`numWorkers` must be at least 1.")
+        self.numWorkers = numWorkers
+        self.simulatorClass = simulatorClass
+        simulatorParams = simulatorParams if simulatorParams else dict()
+        if isinstance(simulatorParams, dict):
+            self.simulatorParams = [simulatorParams for _ in range(numWorkers)]
+        elif isinstance(simulatorParams, Iterable):
+            if len(simulatorParams) != numWorkers:
+                raise ValueError(
+                    "Length of `simulatorParams` does not match `numWorkers`."
+                )
+            self.simulatorParams = tuple(simulatorParams)
+        else:
+            raise ValueError("`simulatorParams` is not a dict or iterable of dicts.")
+        self.bufferSize = 2 * numWorkers if bufferSize is None else bufferSize
+        if self.bufferSize <= 1:
+            raise ValueError("`bufferSize` must be at least 1.")
+        self.returnFinalState = returnFinalState
+        self.returnTrajectory = returnTrajectory
+        self.returnBytes = returnBytes
+        self.timeout = timeout
+
+    def _jobName(self, jobId):
+        return f"Scene{jobId}"
+
+    def _serializeScene(self, scene, scenario, serialized):
+        from scenic.core.scenarios import Scene
+
+        if serialized:
+            if not isinstance(scene, bytes):
+                raise ValueError(
+                    f"Scene provided has type `{type(scene)}` instead of type `bytes`, but serialized was set to True."
+                )
+            return scene
+        else:
+            if not isinstance(scene, Scene):
+                raise ValueError(
+                    f"Scene provided has type `{type(scene)}` instead of type `Scene`, but serialized was set to False."
+                )
+            return scenario.sceneToBytes(scene)
+
+    def _prepareJob(
+        self, scene, simulateParams, jobId, scenario, serialized, rand_generator
+    ):
+        serializedScene = self._serializeScene(scene, scenario, serialized)
+        jobParams = simulateParams.copy()
+
+        if "name" in jobParams:
+            warnings.warn(
+                "`name` in `simulateParams` is ignored and overwritten by custom name when using `SimulatorGroup`."
+            )
+        jobName = self._jobName(jobId)
+        jobParams["name"] = jobName
+
+        seed = int(rand_generator.integers(2**32))
+
+        return (jobId, serializedScene, jobParams, seed)
+
+    def __enter__(self):
+        pass
+
+    def simulateBatch(self, scenario, scenes, simulateParams=None, serialized=True):
+        """Simulate and return a batch of `SimulationResult` objects.
+
+        Args:
+            scenario: The scenario that the scenes are sampled from.
+            scenes: An iterator of `Scene` objects sampled from ``scenario``.
+            simulateParams: An optional dictionary of params to be passed to simulate internally.
+            serialized: Whether or not ``scenes`` contains serialized scenes.
+        """
+        return tuple(
+            v[1]
+            for v in self.simulateStream(
+                scenario, scenes, simulateParams, serialized, deterministic=True
+            )
+        )
+
+    def simulateStream(
+        self, scenario, scenes, simulateParams=None, serialized=True, deterministic=False
+    ):
+        """Generate a stream of `SimulationResult` objects.
+
+        .. note::
+            NOTE: It is advisable to call close() on the generator when done so as to trigger cleanup.
+
+        Args:
+            scenario: The scenario that the scenes are sampled from.
+            scenes: An iterator of `Scene` objects sampled from ``scenario``.
+            simulateParams: An optional dictionary of params to be passed to simulate internally.
+            serialized: Whether or not ``scenes`` contains serialized scenes.
+            deterministic: Whether or not results should be returned in a deterministic order. Setting
+                this to ``False`` can result in decreased latency when accessing results, but the order
+                will not be fixed.
+        """
+        scenes = iter(scenes)
+        simulateParams = simulateParams if simulateParams else dict()
+
+        # Create helper parameters
+        scenarioCreationData = scenario._scenarioCreationData
+        jobQueue = multiprocessing.Queue()
+        resultQueue = multiprocessing.Queue()
+
+        # Initialize random generator
+        rand_generator = numpy.random.default_rng(random.getrandbits(32))
+
+        # Initialize processes
+        processes = []
+        for simulatorParams in self.simulatorParams:
+            logQueue = multiprocessing.Queue()
+            params = (
+                scenarioCreationData,
+                self.simulatorClass,
+                simulatorParams,
+                jobQueue,
+                resultQueue,
+                logQueue,
+                self.returnFinalState,
+                self.returnTrajectory,
+                self.returnBytes,
+            )
+            process = multiprocessing.Process(target=simulatorGroupHelper, args=params)
+            process.logQueue = logQueue
+            processes.append(process)
+
+        # Job creation utilities
+        remainingJobs = 0
+        jobId = 0
+
+        def putJob(scene):
+            nonlocal jobId
+            nonlocal remainingJobs
+            preparedJob = self._prepareJob(
+                scene,
+                simulateParams,
+                jobId,
+                scenario,
+                serialized,
+                rand_generator=rand_generator,
+            )
+            jobQueue.put(preparedJob)
+            jobId += 1
+            remainingJobs += 1
+
+        # Initialized result management functions
+        lastReturnedJob = 0
+        resultsDict = {}
+
+        monitoredProcesses = list(processes)
+
+        def checkWorkers():
+            nonlocal monitoredProcesses
+
+            for p in monitoredProcesses:
+                if not p.is_alive():
+                    # Write queue messages to a string buffer
+                    buffer = io.StringIO()
+                    while True:
+                        try:
+                            buffer.write(p.logQueue.get(block=True, timeout=5))
+                        except queue.Empty:
+                            break
+
+                    raise RuntimeError(
+                        f"Worker process {p.pid} has died with the following error:\n{buffer.getvalue()}"
+                    )
+
+        def monitoringQueueGet(q):
+            while True:
+                checkWorkers()
+                try:
+                    result = q.get(timeout=1)
+                    return result
+                except queue.Empty:
+                    continue
+
+        def getNextResult():
+            if not deterministic:
+                return monitoringQueueGet(resultQueue)
+
+            nonlocal lastReturnedJob
+            while True:
+                if lastReturnedJob in resultsDict:
+                    returnResult = (lastReturnedJob, resultsDict.pop(lastReturnedJob))
+                    lastReturnedJob += 1
+                    return returnResult
+
+                jobId, nextResult = monitoringQueueGet(resultQueue)
+                resultsDict[jobId] = nextResult
+
+        try:
+            # Start processes
+            for process in processes:
+                process.start()
+
+            # Initially saturate job buffer
+            for _ in range(self.bufferSize):
+                if scene := next(scenes, None):
+                    putJob(scene)
+
+            # Retrieve results and replenish buffer
+            while remainingJobs:
+                simulationResult = getNextResult()
+                remainingJobs -= 1
+
+                if scene := next(scenes, None):
+                    putJob(scene)
+
+                yield simulationResult
+
+        finally:
+            # Attempt to cleanly kill workers
+            for p in processes:
+                if p.is_alive():
+                    os.kill(p.pid, signal.SIGINT)
+
+            waits = 0
+            while any(p.is_alive() for p in processes) and waits < self.timeout:
+                waits += 1
+                if errors.verbosityLevel > 0:
+                    print(
+                        f"Waiting for simulator group processes to terminate ({waits}/{self.timeout}s elapsed)..."
+                    )
+                time.sleep(1)
+
+            # Terminate any remaining processes and close queues
+            for p in processes:
+                if p.is_alive():
+                    warnings.warn(f"Forcefully killing SimulatorGroup worker: {p.pid}")
+                    p.terminate()
+
+            for p in processes:
+                p.logQueue.close()
+
+            jobQueue.close()
+            resultQueue.close()
+
+
+def simulatorGroupHelper(
+    scenarioCreationData,
+    simulatorClass,
+    simulatorParams,
+    jobQueue,
+    resultQueue,
+    logQueue,
+    returnFinalState,
+    returnTrajectory,
+    returnBytes,
+):
+    # Prevent resultQueue from blocking us from exiting the process.
+    resultQueue.cancel_join_thread()
+
+    # Setup queue writer to log stdout/stderr.
+    class QueueWriter:
+        def __init__(self, queue):
+            self.queue = queue
+
+        def write(self, message):
+            if message:
+                self.queue.put(message)
+
+        def flush(self):
+            pass
+
+    sys.stdout = QueueWriter(logQueue)
+    sys.stderr = QueueWriter(logQueue)
+
+    from scenic.syntax.translator import _scenarioFromStream
+
+    scenario = _scenarioFromStream(
+        stream=io.BytesIO(scenarioCreationData["streamLines"]),
+        compileOptions=scenarioCreationData["compileOptions"],
+        filename=scenarioCreationData["filename"],
+        scenario=scenarioCreationData["scenario"],
+        path=scenarioCreationData["path"],
+        _cacheImports=False,
+    )
+
+    try:
+        with simulatorClass(**simulatorParams) as simulator:
+            while True:
+                # Extract a result from input queue, periodically breaking to allow
+                # SIGINT to be processed.
+                while True:
+                    try:
+                        result = jobQueue.get(timeout=1)
+                        jobId, serializedScene, simulateParams, seed = result
+                        break
+                    except queue.Empty:
+                        continue
+
+                setSeed(seed)
+                scene = scenario.sceneFromBytes(serializedScene, verify=False)
+                simulation = simulator.simulate(scene, **simulateParams)
+
+                if simulation:
+                    simulationResult = simulation.result
+                    simulationResult.actions = None
+                    if not returnFinalState:
+                        simulationResult.finalState = None
+                    if not returnTrajectory:
+                        simulationResult.trajectory = None
+                    if not returnBytes:
+                        simulationResult.replayBytes = None
+                else:
+                    simulationResult = None
+
+                resultQueue.put((jobId, simulationResult))
+    except Exception as e:
+        logQueue.put(traceback.format_exc())
+        logQueue.close()
+        logQueue.join_thread()
+        raise

@@ -4,9 +4,12 @@ import bz2
 import collections
 from contextlib import contextmanager
 import functools
+import io
 import itertools
 import math
+import multiprocessing
 import os
+import random
 import signal
 from subprocess import CalledProcessError
 import sys
@@ -393,3 +396,9 @@ else:
                 wrapped = wrapped.__wrapped__
             globalns = getattr(wrapped, "__globals__", {})
         return typing.get_type_hints(obj, globalns, localns)
+
+
+def setSeed(seed):
+    """Set the random seed used by Scenic"""
+    random.seed(seed)
+    numpy.random.seed(seed)

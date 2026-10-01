@@ -69,3 +69,24 @@ def test_distribution_method_encapsulation_lazy():
     assert not needsLazyEvaluation(evpt)
     assert isinstance(evpt, VectorMethodDistribution)
     assert evpt.method is underlyingFunction(vf.followFrom)
+
+
+@pytest.mark.skipif(
+    sys.version_info < (3, 10), reason="Pairwise requires Python 3.10 or higher."
+)
+def test_vf_follow():
+    vf = VectorField(
+        "Foo", lambda pos: 0 if int(pos.x + pos.y) % 2 == 0 else (math.radians(-90))
+    )
+
+    start_pt = Vector(0, 0)
+    end_pt = vf.followFrom(start_pt, 5, stepSize=1)
+    traj = vf.followFromTrajectory(start_pt, 5, stepSize=1)
+
+    assert traj.points[-1] == pytest.approx(end_pt)
+
+    for pt_a, pt_b in itertools.pairwise(traj.points):
+        if int(sum(pt_a)) % 2 == 0:
+            assert pt_a + Vector(0, 1) == pytest.approx(pt_b)
+        else:
+            assert pt_a + Vector(1, 0) == pytest.approx(pt_b)

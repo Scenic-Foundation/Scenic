@@ -29,16 +29,19 @@ import importlib.abc
 import importlib.util
 import inspect
 import io
+import itertools
 import os
 import sys
 import time
 import types
 from typing import Optional
+import warnings
 
-from scenic.core.distributions import RejectionException, toDistribution
+from scenic.core.distributions import Distribution, RejectionException, toDistribution
 from scenic.core.dynamics.scenarios import DynamicScenario
 import scenic.core.errors as errors
 from scenic.core.errors import InvalidScenarioError, PythonCompileError
+from scenic.core.external_params import ExternalParameter, ExternalSampler
 from scenic.core.lazy_eval import needsLazyEvaluation
 import scenic.core.pruning as pruning
 from scenic.core.serialization import deterministicHash
@@ -161,6 +164,17 @@ def _scenarioFromStream(
           behavior as importing a Python module. See `purgeModulesUnsafeToCache`
           for a more detailed discussion of the internals behind this.
     """
+    # Backup stream and parameters
+    streamLines = stream.read()
+    scenarioCreationData = {
+        "streamLines": streamLines,
+        "compileOptions": compileOptions,
+        "filename": filename,
+        "scenario": scenario,
+        "path": path,
+    }
+    stream = io.BytesIO(streamLines)
+
     # Compile the code as if it were a top-level module
     oldModules = list(sys.modules.keys())
     try:
@@ -168,7 +182,9 @@ def _scenarioFromStream(
             veneer.activate(compileOptions, namespace)
             compileStream(stream, namespace, compileOptions, filename, activate=False)
         # Construct a Scenario from the resulting namespace
-        return constructScenarioFrom(namespace, scenario)
+        scenario = constructScenarioFrom(namespace, scenario)
+        scenario._scenarioCreationData = scenarioCreationData
+        return scenario
     finally:
         veneer.deactivate()
         if not _cacheImports:
@@ -410,6 +426,7 @@ class ScenicLoader(importlib.abc.InspectLoader):
         # objects, parameters, etc. from this one
         if veneer.isActive():
             veneer.currentScenario._inherit(module._scenario)
+            module._scenario._inherited = veneer.currentScenario._inherited
 
     def is_package(self, fullname):
         return False
@@ -696,5 +713,29 @@ def constructScenarioFrom(namespace, scenarioName=None):
 
     # Validate scenario
     scenario.validate()
+
+    # Convert distributions to ExternalParameters if requested, and create
+    # the external sampler.
+    if scenario.params.get("convertDistributions", False):
+        from scenic.core.external_params.verifai import VerifaiSampler
+
+        externalParamConverter = scenario.params.get(
+            "externalSampler", VerifaiSampler
+        ).getExternalParameterConverter()
+
+        for dep in scenario.dependencies:
+            externalParamConverter.convert(dep)
+
+        newExternalParams = externalParamConverter.externalParams
+    else:
+        newExternalParams = []
+
+    numOrigExternalParams = len(scenario.externalParams)
+    scenario.createExternalSampler(newExternalParams)
+    numNewExternalParams = len(scenario.externalParams) - numOrigExternalParams
+    if numNewExternalParams > 0 and errors.verbosityLevel >= 1:
+        print(
+            f"  Converted {numNewExternalParams} distributions to {externalParamConverter.paramType}"
+        )
 
     return scenario

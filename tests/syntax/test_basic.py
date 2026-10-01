@@ -411,3 +411,14 @@ def test_simulator_name_binding_executes():
     )
     ego = sampleEgo(scenario)
     assert ego.foo == 7
+
+
+def test_setSeed():
+    scenic.setSeed(10)
+    p1 = sampleParamPFrom("param p = Range(0, 1)")
+    scenic.setSeed(10)
+    p2 = sampleParamPFrom("param p = Range(0, 1)")
+    p3 = sampleParamPFrom("param p = Range(0, 1)")
+
+    assert p1 == p2
+    assert p1 != p3

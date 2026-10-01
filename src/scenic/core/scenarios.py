@@ -3,9 +3,14 @@
 import dataclasses
 import io
 import itertools
+import multiprocessing
+import os
+import queue
 import random
+import signal
 import sys
 import time
+import warnings
 
 import numpy
 import trimesh
@@ -19,6 +24,7 @@ from scenic.core.distributions import (
     needsSampling,
 )
 from scenic.core.dynamics.behaviors import Behavior, Monitor
+import scenic.core.errors as errors
 from scenic.core.errors import InvalidScenarioError, optionallyDebugRejection
 from scenic.core.external_params import ExternalSampler
 from scenic.core.lazy_eval import needsLazyEvaluation
@@ -38,6 +44,7 @@ from scenic.core.requirements import (
 )
 from scenic.core.sample_checking import BasicChecker, WeightedAcceptanceChecker
 from scenic.core.serialization import Serializer, dumpAsScenicCode
+from scenic.core.utils import setSeed
 from scenic.core.vectors import Vector
 
 # Global params
@@ -201,6 +208,7 @@ class Scene(_ScenarioPickleMixin):
         self.dynamicScenario = dynamicScenario
         self.sample = sample
         self.compileOptions = compileOptions
+        self.externalSamplerInfo = None
 
     def dumpAsScenicCode(self, stream=sys.stdout):
         """Dump Scenic code reproducing this scene to the given stream.
@@ -314,9 +322,7 @@ class Scenario(_ScenarioPickleMixin):
         self.egoObject = egoObject
         self.params = dict(params)
         self.externalParams = tuple(externalParams)
-        self.externalSampler = ExternalSampler.forParameters(
-            self.externalParams, self.params
-        )
+        self.externalSampler = None
         self.monitors = tuple(monitors)
         self.behaviorNamespaces = behaviorNamespaces
         self.dynamicScenario = dynamicScenario
@@ -341,9 +347,11 @@ class Scenario(_ScenarioPickleMixin):
             for value in namespace.values():
                 if isinstance(value, Samplable):
                     behaviorDeps.append(value)
+
         self.dependencies = (
             self._instances + paramDeps + tuple(requirementDeps) + tuple(behaviorDeps)
         )
+        self._scenarioCreationData = None
 
         # Setup the default checker
         self.defaultRequirements = self.generateDefaultRequirements()
@@ -352,6 +360,15 @@ class Scenario(_ScenarioPickleMixin):
     def setSampleChecker(self, checker):
         self.checker = checker
         self.checker.setRequirements(self.defaultRequirements + self.userRequirements)
+
+    def createExternalSampler(self, externalParams):
+        assert self.externalSampler is None
+        self.externalParams += tuple(
+            p for p in set(externalParams) if p not in self.externalParams
+        )
+        self.externalSampler = ExternalSampler.forParameters(
+            self.externalParams, self.params
+        )
 
     def containerOfObject(self, obj):
         if hasattr(obj, "regionContainedIn") and obj.regionContainedIn is not None:
@@ -429,11 +446,26 @@ class Scenario(_ScenarioPickleMixin):
         Raises:
             `RejectionException`: if no valid sample is found in **maxIterations** iterations.
         """
-        scenes, iterations = self.generateBatch(1, maxIterations, verbosity, feedback)
-        return scenes[0], iterations
+        scenes, totalIterations = self.generateBatch(
+            numScenes=1,
+            maxIterations=maxIterations,
+            verbosity=verbosity,
+            feedback=feedback,
+            numWorkers=0,
+            mute=False,
+        )
+        assert len(scenes) == 1
+        return (scenes[0], totalIterations)
 
     def generateBatch(
-        self, numScenes, maxIterations=float("inf"), verbosity=0, feedback=None
+        self,
+        numScenes,
+        maxIterations=float("inf"),
+        verbosity=0,
+        feedback=None,
+        numWorkers=0,
+        mute=True,
+        serialized=False,
     ):
         """Sample several `Scene` objects from this scenario.
 
@@ -445,6 +477,10 @@ class Scenario(_ScenarioPickleMixin):
             verbosity (int): Verbosity level.
             feedback (float): Feedback to pass to external samplers doing active sampling.
                 See :mod:`scenic.core.external_params`.
+            numWorkers (int): The number of workers to be used when generating scenes. If numWorkers
+                is 0, scenes will be generated in the main process.
+            mute (bool): Whether or not to mute stdOut and stdErr in the worker processes.
+            serialized (bool): Whether or not to return scenes in a serialized format.
 
         Returns:
             A pair with a list of the sampled `Scene` objects and the total number
@@ -453,21 +489,234 @@ class Scenario(_ScenarioPickleMixin):
         Raises:
             `RejectionException`: if not enough valid samples are found in **maxIterations** iterations.
         """
-        totalIterations = 0
-        scenes = []
+        stream = self.generateStream(
+            numScenes=numScenes,
+            maxIterations=maxIterations,
+            verbosity=verbosity,
+            feedback=feedback,
+            numWorkers=numWorkers,
+            mute=mute,
+            serialized=serialized,
+            deterministic=True,
+            iterationCount=True,
+        )
+        results_list = list(stream)
+        scenes = tuple(r[0] for r in results_list)
+        totalIterations = sum([r[1] for r in results_list])
+        return (scenes, totalIterations)
 
-        for _ in range(numScenes):
-            try:
-                remainingIts = maxIterations - totalIterations
-                scene, iterations = self._generateInner(remainingIts, verbosity, feedback)
-                scenes.append(scene)
-                totalIterations += iterations
-            except RejectionException:
-                raise RejectionException(
-                    f"failed to generate scenario in {maxIterations} iterations"
+    def generateStream(
+        self,
+        numScenes,
+        maxIterations=float("inf"),
+        verbosity=0,
+        feedback=None,
+        numWorkers=0,
+        bufferSize=None,
+        mute=True,
+        serialized=False,
+        deterministic=True,
+        iterationCount=False,
+    ):
+        """Sample a stream of `Scene` objects from this scenario.
+
+        For a description of how scene generation is done, see `scene generation`. This function can produce
+        both finite and infinite streams (depending on the value of ``numScenes``).
+
+        .. note::
+            NOTE: The ``deterministic`` parameter is by default set to True, meaning that scenes
+            will be returned in a fixed order for a given Scenic seed. Setting this to False
+            means scenes will be returned in a possibly non-deterministic order, but with possibly
+            decreased latency. When ``deterministic`` is set to ``False``, the ordering of the returned scenes
+            is not fully random, with scenes that are easier to generate being more likely to be returned
+            earlier in the stream. Despite this, the overall distribution of the returned scenes still
+            matches the scenario. When generating an infinite stream, ``deterministic`` must be set to ``True``.
+
+        .. note::
+            NOTE: If sampling an infinite number of scenes, it is advisable to call close() on the generator
+            when done so as to trigger cleanup.
+
+        Args:
+            numScenes (int): Number of scenes to generate, or ``float('inf')`` to sample an infinite stream
+                of Scenes.
+            maxIterations (int): Maximum number of rejection sampling iterations (over all scenes).
+            verbosity (int): Verbosity level.
+            feedback (float): Feedback to pass to external samplers doing active sampling.
+                See :mod:`scenic.core.external_params`.
+            numWorkers (int): The number of workers to be used when generating scenes. If numWorkers
+                is 0, scenes will be generated in the main process.
+            bufferSize (int): The number of scenes to have available at any given time, or `None` to
+                use default values. If set to ``None`` and ``numScenes`` is finite, all scenes are generated
+                in a greedy fashon. If set to ``None`` and ``numScenes`` is infinite, set to a default
+                value of ``2*numWorkers``.
+            mute (bool): Whether or not to mute stdOut and stdErr in the worker processes.
+            serialized (bool): Whether or not to return scenes in a serialized format.
+            deterministic (bool): Whether or not scenes will be returned in a deterministic order. This
+                must be set to `True` when generating an infinite stream.
+            iterationCount (bool): Whether or not to return the number of iterations used to generate each
+                scene. If this is set to `False`, the return type is simply an iterable of `Scene` objects.
+
+        Returns:
+            An iterable of pairs with a sampled `Scene` and the number of iterations used for that scene
+            (if iterationCount is set to True).
+        """
+        if numScenes <= 0:
+            raise ValueError("`numScenes` must be at least 1.")
+
+        if not isinstance(numScenes, int) and numScenes != float("inf"):
+            raise ValueError("`numScenes` must be either an `int` or `float('inf')`.")
+
+        if numScenes == float("inf") and not deterministic:
+            raise ValueError(
+                "`deterministic` must be set to `True` when generating an infinite stream."
+            )
+
+        if bufferSize is None and numScenes == float("inf"):
+            bufferSize = 2 * numWorkers
+
+        if numWorkers == 0:
+            totalIterations = 0
+            returnedResultCount = 0
+
+            while returnedResultCount < numScenes:
+                try:
+                    remainingIts = maxIterations - totalIterations
+                    rawScene, iterations = self._generateInner(
+                        remainingIts, verbosity, feedback
+                    )
+                    scene = self.sceneToBytes(rawScene) if serialized else rawScene
+                    totalIterations += iterations
+                    if iterationCount:
+                        yield (scene, iterations)
+                    else:
+                        yield scene
+                    returnedResultCount += 1
+                except RejectionException:
+                    raise RejectionException(
+                        f"failed to generate scenario in {maxIterations} iterations"
+                    )
+        else:
+            if maxIterations != float("inf"):
+                raise ValueError("maxIterations not supported for parallel sampling.")
+
+            if feedback is not None:
+                raise ValueError("Feedback not supported for parallel sampling.")
+
+            # Initialize results tracking data
+            returnedResultCount = 0
+
+            # Initialize random generator
+            rand_generator = numpy.random.default_rng(random.getrandbits(32))
+
+            # Initialize queues
+            seedQueue = multiprocessing.Queue()
+            seedHistory = []
+            putSeedCount = 0
+
+            def putSeed():
+                nonlocal putSeedCount
+                newSeed = int(rand_generator.integers(2**32))
+                seedQueue.put(newSeed)
+                if deterministic:
+                    seedHistory.append(newSeed)
+                putSeedCount += 1
+
+            initialSeedCount = numScenes if bufferSize is None else bufferSize
+            for _ in range(initialSeedCount):
+                putSeed()
+
+            sceneQueue = multiprocessing.Queue()
+
+            # Initialize processes
+            params = (self._scenarioCreationData, seedQueue, sceneQueue, verbosity, mute)
+            processes = [
+                multiprocessing.Process(target=generateInnerBatchHelper, args=params)
+                for _ in range(numWorkers)
+            ]
+
+            # Initialized result management functions
+            resultsDict = {}
+
+            monitoredProcesses = list(processes)
+
+            def checkWorkers():
+                nonlocal monitoredProcesses
+
+                for p in monitoredProcesses:
+                    if not p.is_alive():
+                        raise RuntimeError(
+                            f"Worker process {p.pid} has died. Consider creating the SimulatorGroup with mute=False to diagnose the issue."
+                        )
+
+            def monitoringQueueGet(q):
+                while True:
+                    checkWorkers()
+                    try:
+                        result = q.get(timeout=1)
+                        return result
+                    except queue.Empty:
+                        continue
+
+            def getResult():
+                sceneBytes, resultIterations, resultSeed = monitoringQueueGet(sceneQueue)
+                resultScene = (
+                    sceneBytes
+                    if serialized
+                    else self.sceneFromBytes(sceneBytes, verify=False)
                 )
+                return (resultScene, resultIterations), resultSeed
 
-        return scenes, totalIterations
+            def getNextResult():
+                if not deterministic:
+                    nextResult = getResult()[0]
+                    return nextResult if iterationCount else nextResult[0]
+
+                while True:
+                    if seedHistory[0] in resultsDict:
+                        nextResult = resultsDict[seedHistory.pop(0)]
+                        return nextResult if iterationCount else nextResult[0]
+
+                    result, resultSeed = getResult()
+                    resultsDict[resultSeed] = result
+
+            # Start sampling processes and yield samples
+            try:
+                # Start processes
+                for process in processes:
+                    process.start()
+
+                # Retrieve results
+                while returnedResultCount < numScenes:
+                    yield getNextResult()
+                    returnedResultCount += 1
+
+                    if putSeedCount < numScenes:
+                        putSeed()
+
+            finally:
+                for p in processes:
+                    if p.is_alive():
+                        os.kill(p.pid, signal.SIGINT)
+
+                waits = 0
+                while any(p.is_alive() for p in processes) and waits < 10:
+                    waits += 1
+                    if errors.verbosityLevel > 0:
+                        print(
+                            f"Waiting for simulator group processes to terminate ({waits}/{10}s elapsed)..."
+                        )
+                    time.sleep(1)
+
+                # Terminate any remaining processes and close queues
+                for p in processes:
+                    if p.is_alive():
+                        warnings.warn(
+                            f"Forcefully killing generateStream worker: {p.pid}"
+                        )
+                        p.terminate()
+
+                seedQueue.close()
+                sceneQueue.close()
 
     def _generateInner(self, maxIterations, verbosity, feedback):
         # choose which custom requirements will be enforced for this sample
@@ -493,7 +742,9 @@ class Scenario(_ScenarioPickleMixin):
             iterations += 1
             try:
                 if self.externalSampler is not None:
-                    self.externalSampler.sample(feedback)
+                    externalSamplerInfo = self.externalSampler.sample(feedback)
+                else:
+                    externalSamplerInfo = None
                 sample = Samplable.sampleAll(self.dependencies)
             except RejectionException as e:
                 optionallyDebugRejection(e)
@@ -518,6 +769,7 @@ class Scenario(_ScenarioPickleMixin):
 
         # obtained a valid sample; assemble a scene from it
         scene = self._makeSceneFromSample(sample)
+        scene.externalSamplerInfo = externalSamplerInfo
         return scene, iterations
 
     def generateDefaultRequirements(self):
@@ -783,3 +1035,43 @@ class Scenario(_ScenarioPickleMixin):
             data = io.BytesIO(data)
         scene = self.sceneFromBytes(data, verify=verify, allowPickle=allowPickle)
         return simulator.simulate(scene, replay=data, **kwargs)
+
+
+def generateInnerBatchHelper(
+    scenarioCreationData, seedQueue, sceneQueue, verbosity, mute
+):
+    if mute:
+        sys.stdout = open(os.devnull, "w")
+        sys.stderr = open(os.devnull, "w")
+
+    # Prevent sceneQueue from blocking us from exiting the process.
+    sceneQueue.cancel_join_thread()
+
+    from scenic.syntax.translator import _scenarioFromStream
+
+    scenario = _scenarioFromStream(
+        stream=io.BytesIO(scenarioCreationData["streamLines"]),
+        compileOptions=scenarioCreationData["compileOptions"],
+        filename=scenarioCreationData["filename"],
+        scenario=scenarioCreationData["scenario"],
+        path=scenarioCreationData["path"],
+        _cacheImports=False,
+    )
+
+    while True:
+        # Extract a result from the input queue, periodically breaking to allow
+        # SIGINT to be processed.
+        while True:
+            try:
+                seed = seedQueue.get(timeout=1)
+                break
+            except queue.Empty:
+                continue
+
+        setSeed(seed)
+        scene, iterations = scenario._generateInner(
+            maxIterations=float("inf"), verbosity=verbosity, feedback=None
+        )
+        sceneBytes = scenario.sceneToBytes(scene)
+
+        sceneQueue.put((sceneBytes, iterations, seed))

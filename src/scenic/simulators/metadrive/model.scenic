@@ -125,6 +125,9 @@ class MetaDriveActor(DrivingObject):
     def setVelocity(self, vel):
         self.metaDriveActor.set_velocity(vel)
 
+    def setOrientation(self, orientation):
+        converted_heading = scenicToMetaDriveHeading(orientation.yaw)
+        self.metaDriveActor.set_heading_theta(converted_heading)
 
 class Vehicle(Vehicle, Steers, MetaDriveActor):
     def __init__(self, *args, **kwargs):
@@ -184,7 +187,7 @@ class Pedestrian(Pedestrian, MetaDriveActor, Walks):
         return True
 
     def setWalkingDirection(self, heading):
-        self._walking_direction = scenicToMetaDriveHeading(heading)
+        self._walking_direction = heading
 
     def setWalkingSpeed(self, speed):
         self._walking_speed = speed

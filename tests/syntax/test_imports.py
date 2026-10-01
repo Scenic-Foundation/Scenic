@@ -13,7 +13,7 @@ import pytest
 from scenic import scenarioFromFile
 from scenic.core.errors import ScenicSyntaxError
 from scenic.syntax.translator import InvalidScenarioError
-from tests.utils import compileScenic, sampleScene, sampleSceneFrom
+from tests.utils import compileScenic, sampleResult, sampleScene, sampleSceneFrom
 
 
 def test_import_top_absolute(request):
@@ -75,6 +75,50 @@ def test_inherit_requirements(runLocally):
             assert len(scene.objects) == 2
             constrainedObj = scene.objects[1]
             assert constrainedObj.position.x > 0
+
+
+def test_inherit_records(runLocally):
+    with runLocally():
+        scenario = compileScenic(
+            """
+            import helper_record
+            """
+        )
+
+        result = sampleResult(scenario, maxSteps=1)
+        assert "foo" in result.records
+        assert result.records["foo"] == 1
+
+
+def test_inherit_terminate(runLocally):
+    with runLocally():
+        scenario = compileScenic(
+            """
+            import helper_terminate
+            ego = new Object
+            record 1 as "foo"
+            terminate after 4 steps
+            """
+        )
+
+        result = sampleResult(scenario, maxSteps=5)
+        assert "foo" in result.records
+        assert result.records["foo"] == [(0, 1), (1, 1)]
+
+
+def test_inherit_require_monitor(runLocally):
+    with runLocally():
+        scenario = compileScenic(
+            """
+            import helper_require_monitor
+            ego = new Object
+            record 1 as "foo"
+            """
+        )
+
+        result = sampleResult(scenario, maxSteps=5)
+        assert "foo" in result.records
+        assert result.records["foo"] == [(0, 1), (1, 1)]
 
 
 def test_inherit_constructors(runLocally):

@@ -286,13 +286,15 @@ class MetaDriveSimulation(DrivingSimulation):
             else:
                 # For Pedestrians
                 if obj._walking_direction is None:
-                    obj._walking_direction = utils.scenicToMetaDriveHeading(obj.heading)
+                    obj._walking_direction = obj.heading
                 if obj._walking_speed is None:
                     obj._walking_speed = obj.speed
+                metadrive_heading = utils.scenicToMetaDriveHeading(obj._walking_direction)
                 direction = [
-                    math.cos(obj._walking_direction),
-                    math.sin(obj._walking_direction),
+                    math.cos(metadrive_heading),
+                    math.sin(metadrive_heading),
                 ]
+                obj.setOrientation(toOrientation(obj._walking_direction))
                 obj.metaDriveActor.set_velocity(direction, obj._walking_speed)
 
     def step(self):

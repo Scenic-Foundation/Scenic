@@ -15,7 +15,10 @@ the following terms:
 
 import math
 
+import numpy as np
+
 from scenic.core.simulators import Action
+from scenic.core.type_support import toOrientation
 from scenic.core.vectors import Vector
 
 ## Mixin classes indicating support for various types of actions.
@@ -53,12 +56,10 @@ class Walks:
     """
 
     def setWalkingDirection(self, heading):
-        velocity = Vector(0, self.speed).rotatedBy(heading)
-        self.setVelocity(velocity)
+        self.setOrientation(toOrientation(heading))
 
     def setWalkingSpeed(self, speed):
-        velocity = speed * self.velocity.normalized()
-        self.setVelocity(velocity)
+        self.setVelocity(Vector(0, speed).rotatedBy(self.heading))
 
 
 ## Actions available to all agents
@@ -104,6 +105,16 @@ class SetSpeedAction(Action):
     def applyTo(self, obj, sim):
         vel = Vector(0, self.speed).rotatedBy(obj.heading)
         obj.setVelocity(vel)
+
+
+class SetOrientationAction(Action):
+    """Set the orientation of an agent."""
+
+    def __init__(self, orientation):
+        self.orientation = toOrientation(orientation)
+
+    def applyTo(self, obj, sim):
+        obj.setOrientation(self.orientation)
 
 
 ## Actions available to vehicles which can steer
@@ -241,11 +252,8 @@ class RegulatedControlAction(SteeringAction):
             brake = min(abs(throttle), max_brake)
 
         # Steering regulation: changes cannot happen abruptly, can't steer too much.
-
-        if steer > past_steer + 0.1:
-            steer = past_steer + 0.1
-        elif steer < past_steer - 0.1:
-            steer = past_steer - 0.1
+        if past_steer is not None:
+            steer = np.clip(steer, past_steer - 0.1, past_steer + 0.1)
 
         if steer >= 0:
             steer = min(max_steer, steer)

@@ -28,6 +28,12 @@ apparent heading of *OrientedPoint* [from *vector*]
 ---------------------------------------------------
 The apparent heading of the OrientedPoint, with respect to the line of sight from ego (or the position provided with the optional from vector)
 
+.. _apparent heading to {vector} [from {OrientedPoint}]:
+
+apparent heading to *vector* [from *OrientedPoint*]
+---------------------------------------------------
+The apparent heading to the vector, with respect to the line of sight from ego (or the OrientedPoint provided with the optional from OrientedPoint)
+
 .. _distance [from {vector}] to {vector}:
 .. _distance from:
 
@@ -47,6 +53,7 @@ minimum distance [from *Object*] to *Object*
 The minimum distance to the given Object from ego (or the Object provided with the optional :scenic:`from {Object}`). Unlike :ref:`distance from`, which computes the distance between the :prop:`position` of the objects, this operator takes into account the objects' :prop:`shape` and dimensions.
 
 .. versionadded:: unreleased
+
 
 .. _angle [from {vector}] to {vector}:
 
@@ -88,6 +95,15 @@ Whether an `Object`/`Region` intersects another `Object`/`Region`, i.e. whether 
 
 When working with 2D regions, it can be useful to check intersection with the :term:`footprint` of a region, e.g. when checking whether a car intersects a given lane. In this case, one would write :scenic:`car intersects lane.footprint` instead of :scenic:`car intersects lane`. For more details, see :term:`footprint`.
 
+.. _{vector} (ahead of | behind | left of | right of) {region}:
+
+*vector* (ahead of | behind | left of | right of) *OrientedPoint*
+-----------------------------------------------------------------
+Whether a vector is to a respective side of an `OrientedPoint` (i.e. within +- ~90 degrees from that direction), accounting for the heading of the `OrientedPoint`. These operators are convenient shorthand for comparing :sampref:`apparent heading to {vector} [from {OrientedPoint}]` to a range of values.
+
+Note: For vectors very close to a boundary point (i.e. an apparent heading to the vector in (89.99, 90.01) or (-89.99, -90.01) for "ahead of" and "behind"), both operators will resolve to False.
+
+Example: If an `OrientedPoint` had an apparent heading to a vector of 45 degrees, it would be both "ahead of" and "left of" the `OrientedPoint` but not "behind" or "right of".
 
 Orientation Operators
 =====================

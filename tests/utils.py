@@ -185,11 +185,17 @@ def sampleTrajectory(
     )
 
 
-def sampleResult(scenario, maxIterations=1, maxSteps=1, maxScenes=1, timestep=1):
+def sampleResult(
+    scenario, maxIterations=1, maxSteps=1, maxScenes=1, timestep=1, simulator=None
+):
     for i in range(maxScenes):
         scene, iterations = generateChecked(scenario, maxIterations)
         result = sampleResultFromScene(
-            scene, maxIterations=maxIterations, maxSteps=maxSteps, timestep=timestep
+            scene,
+            maxIterations=maxIterations,
+            maxSteps=maxSteps,
+            timestep=timestep,
+            simulator=simulator,
         )
         if result is not None:
             return result
@@ -198,16 +204,21 @@ def sampleResult(scenario, maxIterations=1, maxSteps=1, maxScenes=1, timestep=1)
     )
 
 
-def sampleResultOnce(scenario, maxSteps=1, timestep=1):
+def sampleResultOnce(scenario, maxSteps=1, timestep=1, simulator=None):
     scene = sampleScene(scenario)
-    sim = DummySimulator()
+    sim = DummySimulator() if simulator is None else simulator
     return sim.simulate(scene, maxSteps=maxSteps, maxIterations=1, timestep=timestep)
 
 
 def sampleResultFromScene(
-    scene, maxIterations=1, maxSteps=1, raiseGuardViolations=False, timestep=1
+    scene,
+    maxIterations=1,
+    maxSteps=1,
+    raiseGuardViolations=False,
+    timestep=1,
+    simulator=None,
 ):
-    sim = DummySimulator()
+    sim = DummySimulator() if simulator is None else simulator
     simulation = sim.simulate(
         scene,
         maxSteps=maxSteps,

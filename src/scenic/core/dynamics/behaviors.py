@@ -109,7 +109,7 @@ class Behavior(Invocable, Samplable):
             try:
                 actions = self._runningIterator.send(None)
             except StopIteration:
-                actions = ()  # behavior ended early
+                return None
         return actions
 
     def _stop(self, reason=None):
@@ -124,17 +124,38 @@ class Behavior(Invocable, Samplable):
     def _invokeInner(self, agent, subs):
         import scenic.syntax.veneer as veneer
 
-        assert len(subs) == 1
-        sub = subs[0]
-        if not isinstance(sub, Behavior):
-            raise TypeError(f"expected a behavior, got {sub}")
-        sub._start(agent)
-        with veneer.executeInBehavior(sub):
+        # Validate all inner behaviors
+        for sub in subs:
+            if not isinstance(sub, Behavior):
+                raise TypeError(f"expected a behavior, got {sub}")
+            sub._start(agent)
+
+        # Create a generator for each inner behavior that yields the appropriate actions, cleaning up when done.
+        def make_inner_generator(sub):
             try:
-                yield from sub._runningIterator
+                while sub._isRunning:
+                    actions = sub._step()
+                    if actions is None:
+                        return
+                    yield actions
             finally:
                 if sub._isRunning:
                     sub._stop()
+
+        inner_generators = [make_inner_generator(sub) for sub in subs]
+
+        # Yield from a generator that zips all the inner generators together without padding, until all inner generators have terminated.
+        while True:
+            try:
+                raw_actions_list = next(itertools.zip_longest(*inner_generators))
+                yield tuple(
+                    filter(
+                        lambda x: x is not None,
+                        itertools.chain.from_iterable(raw_actions_list),
+                    )
+                )
+            except StopIteration:
+                return
 
     def __repr__(self):
         items = itertools.chain(

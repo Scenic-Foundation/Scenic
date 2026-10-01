@@ -2,6 +2,7 @@
 
 import itertools
 import math
+from typing import Iterable
 import warnings
 
 import numpy as np
@@ -14,6 +15,7 @@ from scenic.core.distributions import (
     needsSampling,
 )
 from scenic.core.lazy_eval import isLazy
+from scenic.core.type_support import toVector
 from scenic.core.utils import cached_property
 
 
@@ -25,6 +27,11 @@ def sin(x) -> float:
 @distributionFunction
 def cos(x) -> float:
     return math.cos(x)
+
+
+@distributionFunction
+def tan(x) -> float:
+    return math.tan(x)
 
 
 @monotonicDistributionFunction
@@ -110,7 +117,9 @@ def distanceToLine(point, a, b):
 
 
 # Fastest known way to make a Shapely Point from a list/tuple/Vector
-makeShapelyPoint = shapely.points
+makeShapelyPoint = lambda pt: (
+    shapely.points(pt) if isinstance(pt, Iterable) else shapely.points(toVector(pt))
+)
 
 
 def polygonUnion(polys, buf=0, tolerance=0, holeTolerance=0.002):

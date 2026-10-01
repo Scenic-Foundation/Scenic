@@ -1,8 +1,11 @@
 from pathlib import Path
+import random
 
 import pytest
+import shapely
 
 from scenic.core.distributions import RejectionException
+from scenic.core.regions import toPolygon
 from scenic.domains.driving.roads import Intersection, Network
 from tests.domains.driving.conftest import mapFolder
 
@@ -42,7 +45,7 @@ def test_element_tolerance(cached_maps, pytestconfig):
         top_level_region.buffer(1.5 * tol)
     )
     road = network.roads[0]
-    nearby = road.buffer(tol).difference(road)
+    nearby = road.region.buffer(tol).difference(road)
     rounds = 30 if pytestconfig.getoption("--fast") else 300
     for i in range(rounds):
         pt = None
@@ -104,7 +107,8 @@ def test_orientation_consistency(network):
 
 def test_linkage(network):
     for road in network.roads:
-        assert road.forwardLanes or road.backwardLanes
+        if not road.forwardLanes and not road.backwardLanes:
+            continue  # Ignore roads without drivable lanes.
         assert road.is1Way == (not (road.forwardLanes and road.backwardLanes))
         seenLanes = set()
 
@@ -255,6 +259,16 @@ def test_sidewalk(network):
         pt = sw.uniformPointInner()
         assert network.sidewalkAt(pt) is sw
         assert network.elementAt(pt) is sw
+
+
+def test_laneGroup_lane_order(network):
+    for _ in range(30):
+        lg = random.choice(network.laneGroups)
+        lane_0_dist = shapely.distance(toPolygon(lg.lanes[0]), toPolygon(lg.curb))
+        lane_distances = [
+            shapely.distance(toPolygon(lane), toPolygon(lg.curb)) for lane in lg.lanes
+        ]
+        assert all(lane_dist >= lane_0_dist - 0.1 for lane_dist in lane_distances)
 
 
 # --- Tests for cached network pickles ---

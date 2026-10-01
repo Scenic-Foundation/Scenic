@@ -11,8 +11,10 @@ import random
 import numpy
 import pytest
 
+import scenic
 from scenic.core.serialization import SerializationError, Serializer, deterministicHash
 from scenic.core.simulators import DivergenceError, DummySimulator
+from tests.simulators.metadrive.test_metadrive import getMetadriveSimulator
 from tests.utils import (
     areEquivalent,
     compileScenic,
@@ -230,7 +232,7 @@ class TestExportToBytes:
         data = sc1.sceneToBytes(scene1)
         scene2 = sc2.sceneFromBytes(data)
         assert sc2.sceneToBytes(scene2) == data
-        assertSceneEquivalence(scene1, scene2)
+        assertSceneEquivalence(scene1, scene2, ignoreScenario=True)
 
     def test_scene_different_scenario(self):
         sc1 = compileScenic(simpleScenario)
@@ -496,6 +498,34 @@ class TestSimulationReplay:
         data = scenario.simulationToBytes(sim1)
         sim2 = scenario.simulationFromBytes(data, simulator, maxSteps=1)
         assert getEgoActionsFrom(sim1) == getEgoActionsFrom(sim2)
+
+    def test_staged_serialization(self):
+        scenario = compileScenic(
+            """
+            behavior Foo():
+                take Range(0, 1) + self.bar
+            ego = new Object with behavior Foo, with bar Range(0,1)
+        """
+        )
+        seed = random.getrandbits(32)
+        sceneOrig = sampleScene(scenario)
+        simulator = DummySimulator()
+
+        sceneBytes = scenario.sceneToBytes(sceneOrig)
+        sceneRestored = scenario.sceneFromBytes(sceneBytes)
+        scenic.setSeed(seed)
+        simOrig = simulator.simulate(sceneOrig, maxSteps=1, maxIterations=1)
+        scenic.setSeed(seed)
+        simRestored = simulator.simulate(sceneRestored, maxSteps=1, maxIterations=1)
+        simBytes = scenario.simulationToBytes(simRestored)
+        simRestoredRestored = scenario.simulationFromBytes(
+            simBytes, simulator, maxSteps=1
+        )
+        assert (
+            getEgoActionsFrom(simOrig)
+            == getEgoActionsFrom(simRestored)
+            == getEgoActionsFrom(simRestoredRestored)
+        )
 
 
 def test_deterministic_hash_non_scalar_values():

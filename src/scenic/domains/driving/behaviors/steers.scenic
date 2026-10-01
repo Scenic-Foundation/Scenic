@@ -4,13 +4,17 @@ These behaviors are automatically imported when using the driving domain.
 """
 
 import math
+from abc import ABC, abstractmethod
+import warnings
 
+import shapely
+from shapely.geometry import GeometryCollection, MultiPolygon, Polygon, MultiLineString, LineString, MultiPoint, Point as ShapelyPoint
+
+from scenic.core.regions import toShapely
+from scenic.core.type_support import toVector
 from scenic.domains.driving.actions import *
 import scenic.domains.driving.model as _model
-from scenic.domains.driving.roads import ManeuverType
-
-def concatenateCenterlines(centerlines=[]):
-    return PolylineRegion.unionAll(centerlines)
+from scenic.domains.driving.roads import ManeuverType, Lane
 
 behavior ConstantThrottleBehavior(x):
     while True:
@@ -25,23 +29,60 @@ behavior DriveAvoidingCollisions(target_speed=25, avoidance_threshold=10):
 behavior AccelerateForwardBehavior():
     take SetReverseAction(False), SetHandBrakeAction(False), SetThrottleAction(0.5)
 
-behavior WalkForwardBehavior():
-    """Walk forward behavior for pedestrians.
-
-    It will uniformly randomly choose either end of the sidewalk that the pedestrian is on, and have the pedestrian walk towards the endpoint.
-    """
-    current_sidewalk = _model.network.sidewalkAt(self.position)
-    end_point = Uniform(*current_sidewalk.centerline.points)
-    end_vec = end_point[0] @ end_point[1]
-    normal_vec = Vector.normalized(end_vec)
-    take WalkTowardsAction(goal_position=normal_vec), SetSpeedAction(speed=1)
-
 behavior ConstantThrottleBehavior(x):
     take SetThrottleAction(x)
 
-behavior FollowLaneBehavior(target_speed = 10, laneToFollow=None, is_oppositeTraffic=False):
+def getFollowLanePath(obj, minPathDistance, preferStraight, laneToFollow=None, path_metadata=None):
+    import shapely
+    import itertools
+
+    if laneToFollow is None:
+        laneToFollow = obj.lane
+    elif not isinstance(laneToFollow, Lane):
+        raise ValueError("`laneToFollow` is not a `Lane`.")
+
+    if path_metadata is None:
+        current_lane = laneToFollow
+        initial_path = current_lane.centerline.lineString
+    else:
+        current_lane = path_metadata[0]
+        initial_path = path_metadata[1]
+    
+    assert isinstance(initial_path, shapely.geometry.LineString)
+    initial_path = shapely.remove_repeated_points(initial_path)
+
+    def mergeLineStrings(geoms):
+        return shapely.geometry.LineString(itertools.chain.from_iterable(geom.coords for geom in geoms))
+
+    ego_pt = shapely.geometry.Point(*obj.position)
+    path = shapely.ops.substring(initial_path, initial_path.project(ego_pt), initial_path.length)
+
+    while path.length < minPathDistance:
+        straight_manuevers = [m for m in current_lane.maneuvers if m.type == ManeuverType.STRAIGHT]
+
+        if preferStraight and straight_manuevers:
+            target_maneuver = Uniform(*straight_manuevers)
+        else:
+            if len(current_lane.maneuvers) > 0:
+                target_maneuver = Uniform(*current_lane.maneuvers)
+            else:
+                # No more maneuvers. Raise a warning and return centerline as is
+                warnings.warn("Could not generate path of desired distance. Returning path as is.")
+                break
+
+        if target_maneuver.connectingLane != None:
+            path = mergeLineStrings([path, target_maneuver.connectingLane.centerline.lineString, target_maneuver.endLane.centerline.lineString])
+        else:
+            path = mergeLineStrings([path, target_maneuver.endLane.centerline.lineString])
+
+        current_lane = target_maneuver.endLane
+
+    assert isinstance(path, shapely.geometry.LineString)
+    return PolylineRegion(polyline=path), (current_lane, path)
+
+behavior FollowLaneBehavior(target_speed=10, laneToFollow=None, preferStraight=True):
     """
-    Follow's the lane on which the vehicle is at, unless the laneToFollow is specified.
+    Follows the lane on which the vehicle is at, unless the laneToFollow is specified.
     Once the vehicle reaches an intersection, by default, the vehicle will take the straight route.
     If straight route is not available, then any availble turn route will be taken, uniformly randomly.
     If turning at the intersection, the vehicle will slow down to make the turn, safely.
@@ -50,107 +91,103 @@ behavior FollowLaneBehavior(target_speed = 10, laneToFollow=None, is_oppositeTra
     e.g. do FollowLaneBehavior() until ...
 
     :param target_speed: Its unit is in m/s. By default, it is set to 10 m/s
-    :param laneToFollow: If the lane to follow is different from the lane that the vehicle is on, this parameter can be used to specify that lane. By default, this variable will be set to None, which means that the vehicle will follow the lane that it is currently on.
+    :param laneToFollow: If the lane to follow is different from the lane that the vehicle is on, this 
+        parameter can be used to specify that lane. By default, this variable will be set to None, which
+        means that the vehicle will follow the lane that it is currently on.
     """
     
-    past_steer_angle = 0
-    past_speed = 0 # making an assumption here that the agent starts from zero speed
-    if laneToFollow is None:
-        current_lane = self.lane
-    else:
-        current_lane = laneToFollow
+    assert self.longitudinalController is not None
+    assert self.lateralController is not None
 
-    current_centerline = current_lane.centerline
-    in_turning_lane = False # assumption that the agent is not instantiated within a connecting lane
-    intersection_passed = False
-    entering_intersection = False # assumption that the agent is not instantiated within an intersection
-    end_lane = None
-    original_target_speed = target_speed
-    TARGET_SPEED_FOR_TURNING = 5 # KM/H
-    TRIGGER_DISTANCE_TO_SLOWDOWN = 10 # FOR TURNING AT INTERSECTIONS
-
-    if current_lane.maneuvers != ():
-        nearby_intersection = current_lane.maneuvers[0].intersection
-        if nearby_intersection == None:
-            nearby_intersection = current_lane.centerline[-1]
-    else:
-        nearby_intersection = current_lane.centerline[-1]
-
-    # instantiate longitudinal and lateral controllers
-    _lon_controller, _lat_controller = simulation().getLaneFollowingControllers(self)
+    path_metadata = None
 
     while True:
+        replan_time = 10
+        min_path_distance = max(2*replan_time*target_speed, 50)
+        path, path_metadata = getFollowLanePath(self, min_path_distance, 
+            preferStraight=preferStraight, laneToFollow=laneToFollow, path_metadata=path_metadata)
+        traj = Trajectory.createFixedSpeedTrajectory(path, target_speed, ts=simulation().timestep)
+        do FollowTrajectoryBehavior(traj) for replan_time seconds
 
-        if self.speed is not None:
-            current_speed = self.speed
+class Trajectory(object):
+    def __init__(self, polyline, ts):
+        assert isinstance(polyline, PolylineRegion)
+
+        self.polyline = polyline
+        self.ts = ts
+
+    @property
+    def start(self):
+        return self.polyline.start
+
+    @property
+    def end(self):
+        return self.polyline.end
+
+    @property
+    def duration(self):
+        return self.ts * len(self.polyline.points)
+
+    @property
+    def length(self):
+        return self.polyline.length
+
+    def getRelativeTime(self, pos):
+        return toShapely(self.polyline).project(ShapelyPoint(*pos), normalized=True)*self.duration
+
+    def getTimedDistance(self, timeA, timeB):
+        return shapely.ops.substring(toShapely(self.polyline), timeA/self.duration, timeB/self.duration, normalized=True).length
+
+    def __getitem__(self, time):
+        pt = toShapely(self.polyline).interpolate(time/self.duration, normalized=True)
+        return Vector(pt.x, pt.y)
+
+    @staticmethod
+    def createFixedSpeedTrajectory(polyline, targetSpeed, ts):
+        target_dist = 0
+        points = []
+        while target_dist < polyline.length:
+            points.append(polyline.lineString.interpolate(target_dist))
+            target_dist += targetSpeed*ts
+
+        return Trajectory(PolylineRegion(polyline=LineString(points)), ts=ts)
+
+behavior FollowTrajectoryBehavior(trajectory, terminationDistance=1):
+    """
+    Follows the given Trajectory.
+    
+    The behavior terminates when either of the following conditions are met the vehicle position is within
+        terminationDistance of the end of the trajectory.
+
+    Args:
+        trajectory: A Trajectory.
+        terminationDistance: The behavior will terminate when the vehicle position is within terminationDistance
+            of the end of the trajectory.
+    """
+    assert isinstance(trajectory, Trajectory)
+    assert self.longitudinalController is not None
+    assert self.lateralController is not None
+
+    while distance from self.position to trajectory.end > terminationDistance:
+        # Compute throttle : Longitudinal Control
+        throttle = self.longitudinalController.computeThrottle(trajectory, self)
+        if throttle > 0:
+            throttle_action = SetThrottleAction(throttle)
         else:
-            current_speed = past_speed
+            throttle_action = SetBrakeAction(-throttle)
 
-        if not entering_intersection and (distance from self.position to nearby_intersection) < TRIGGER_DISTANCE_TO_SLOWDOWN:
-            entering_intersection = True
-            intersection_passed = False
-            straight_manuevers = filter(lambda i: i.type == ManeuverType.STRAIGHT, current_lane.maneuvers)
+        # Compute steering : Lateral Control
+        steer = self.lateralController.computeSteering(trajectory, self)
+        steer_action = SetSteerAction(steer)
 
-            if len(straight_manuevers) > 0:
-                select_maneuver = Uniform(*straight_manuevers)
-            else:
-                if len(current_lane.maneuvers) > 0:
-                    select_maneuver = Uniform(*current_lane.maneuvers)
-                else:
-                    take SetBrakeAction(1.0)
-                    break
+        take throttle_action, steer_action
 
-            # assumption: there always will be a maneuver
-            if select_maneuver.connectingLane != None:
-                current_centerline = concatenateCenterlines([current_centerline, select_maneuver.connectingLane.centerline, \
-                    select_maneuver.endLane.centerline])
-            else:
-                current_centerline = concatenateCenterlines([current_centerline, select_maneuver.endLane.centerline])
+## Legacy Behaviors ##
 
-            current_lane = select_maneuver.endLane
-            end_lane = current_lane
+def concatenateCenterlines(centerlines=[]):
+    return PolylineRegion.unionAll(centerlines)
 
-            if current_lane.maneuvers != ():
-                nearby_intersection = current_lane.maneuvers[0].intersection
-                if nearby_intersection == None:
-                    nearby_intersection = current_lane.centerline[-1]
-            else:
-                nearby_intersection = current_lane.centerline[-1]
-
-            if select_maneuver.type != ManeuverType.STRAIGHT:
-                in_turning_lane = True
-                target_speed = TARGET_SPEED_FOR_TURNING
-
-                do TurnBehavior(trajectory = current_centerline)
-
-
-        if (end_lane is not None) and (self.position in end_lane) and not intersection_passed:
-            intersection_passed = True
-            in_turning_lane = False
-            entering_intersection = False
-            target_speed = original_target_speed
-            _lon_controller, _lat_controller = simulation().getLaneFollowingControllers(self)
-
-        nearest_line_points = current_centerline.nearestSegmentTo(self.position)
-        nearest_line_segment = PolylineRegion(nearest_line_points)
-        cte = nearest_line_segment.signedDistanceTo(self.position)
-        if is_oppositeTraffic:
-            cte = -cte
-
-        speed_error = target_speed - current_speed
-
-        # compute throttle : Longitudinal Control
-        throttle = _lon_controller.run_step(speed_error)
-
-        # compute steering : Lateral Control
-        current_steer_angle = _lat_controller.run_step(cte)
-
-        take RegulatedControlAction(throttle, current_steer_angle, past_steer_angle)
-        past_steer_angle = current_steer_angle
-        past_speed = current_speed
-
-
-behavior FollowTrajectoryBehavior(target_speed = 10, trajectory = None, turn_speed=None):
+behavior FollowTrajectoryBehaviorOld(target_speed = 10, trajectory = None, turn_speed=None):
     """
     Follows the given trajectory. The behavior terminates once the end of the trajectory is reached.
 
@@ -204,9 +241,7 @@ behavior FollowTrajectoryBehavior(target_speed = 10, trajectory = None, turn_spe
         take RegulatedControlAction(throttle, current_steer_angle, past_steer_angle)
         past_steer_angle = current_steer_angle
 
-
-
-behavior TurnBehavior(trajectory, target_speed=6):
+behavior TurnBehavior(trajectory, target_speed=6, controllers=None):
     """
     This behavior uses a controller specifically tuned for turning at an intersection.
     This behavior is only operational within an intersection,
@@ -219,7 +254,10 @@ behavior TurnBehavior(trajectory, target_speed=6):
         trajectory_centerline = concatenateCenterlines([traj.centerline for traj in trajectory])
 
     # instantiate longitudinal and lateral controllers
-    _lon_controller, _lat_controller = simulation().getTurningControllers(self)
+    if controllers:
+        _lon_controller, _lat_controller = controllers
+    else:
+        _lon_controller, _lat_controller = simulation().getTurningControllers(self)
 
     past_steer_angle = 0
 

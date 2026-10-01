@@ -4,6 +4,7 @@ from pathlib import Path
 from PIL import Image as IPImage
 import pytest
 
+from scenic.core.simulators import TerminationType
 from scenic.domains.driving.roads import Network
 from scenic.simulators.newtonian import NewtonianSimulator
 from tests.utils import compileScenic, pickle_test, sampleScene, tryPickling
@@ -113,3 +114,42 @@ def test_pedestrian_velocity_vector(getAssetPath):
     # Expect movement northeast (positive dx and dy)
     assert dx > 0.1, f"Expected positive x movement (east), got dx = {dx}"
     assert dy > 0.1, f"Expected positive y movement (north), got dy = {dy}"
+
+
+## Pedestrian Behaviors
+@pytest.mark.slow
+def test_pedestrian_sidewalk_conflict(getAssetPath):
+    mapPath = getAssetPath("maps/CARLA/Town01.xodr")
+
+    code = f"""
+    param map = r'{mapPath}'
+    model scenic.simulators.newtonian.driving_model
+
+    targetSidewalk = Uniform(*network.sidewalks)
+
+    pedASpeed = Range(0.9, 1.8)
+    pedBSpeed = Range(0.9, 1.8)
+
+    pedA = new Pedestrian at targetSidewalk.centerline.start,
+        with behavior WalkTo(targetSidewalk.centerline.end, targetSpeed=pedASpeed)
+
+    pedB = new Pedestrian at targetSidewalk.centerline.end,
+        with behavior WalkTo(targetSidewalk.centerline.start, targetSpeed=pedBSpeed)
+
+    param minPedSpeed = min(pedASpeed, pedBSpeed)
+    param pedDistance = targetSidewalk.centerline.length
+
+    require targetSidewalk.centerline.length >= 10
+
+    terminate when ((distance from pedA to targetSidewalk.centerline.end) < 0.1
+            and (distance from pedB to targetSidewalk.centerline.start) < 0.1)
+    """
+    scenario = compileScenic(code, mode2D=True)
+    for _ in range(5):
+        scene, _ = scenario.generate(maxIterations=100)
+        simulator = NewtonianSimulator(render=False)
+        maxSteps = int(
+            2 * (scene.params["pedDistance"] / scene.params["minPedSpeed"]) / 0.1
+        )
+        simulation = simulator.simulate(scene, maxSteps=maxSteps)
+        assert simulation.result.terminationType == TerminationType.scenarioComplete

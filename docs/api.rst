@@ -30,8 +30,8 @@ the sampled values for all the global parameters and objects in the scene from t
 
 .. testcode::
 
-	import random, scenic
-	random.seed(12345)
+	import scenic
+	scenic.setSeed(12345)
 	scenario = scenic.scenarioFromString('ego = new Object with foo Range(0, 5)')
 	scene, numIterations = scenario.generate()
 	print(f'ego has foo = {scene.egoObject.foo}')
@@ -39,6 +39,13 @@ the sampled values for all the global parameters and objects in the scene from t
 .. testoutput::
 
 	ego has foo = 2.083099362726706
+
+Utilities
+---------
+
+Scenic provides top level utility functions for functions like setting Scenic's random seed.
+
+.. autofunction:: scenic.setSeed
 
 Running Dynamic Simulations
 ---------------------------

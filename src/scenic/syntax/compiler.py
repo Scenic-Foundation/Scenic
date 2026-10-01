@@ -1249,9 +1249,9 @@ class ScenicToPythonTransformer(Transformer):
 
     @context(Context.DYNAMIC)
     def visit_Do(self, node: s.Do):
-        if (self.inBehavior or self.inMonitor) and len(node.elts) > 1:
+        if self.inMonitor and len(node.elts) > 1:
             raise self.makeSyntaxError(
-                f"`do` can only take one action inside a {'behavior' if self.inBehavior else 'monitor'}",
+                f"`do` can only take one action inside a monitor",
                 node,
             )
         return self.makeDoLike(node, node.elts)
@@ -1393,6 +1393,18 @@ class ScenicToPythonTransformer(Transformer):
             "terminate_simulation_when", node.cond, node.lineno, node.name
         )
 
+    @context(Context.TOP_LEVEL)
+    def visit_TerminateAfter(self, node: s.TerminateAfter):
+        cond = ast.Call(
+            func=ast.Name(id="check_time", ctx=loadCtx),
+            args=[
+                self.visit(node.duration.value),
+                ast.Constant(node.duration.unitStr),
+            ],
+            keywords=[],
+        )
+        return self.createRequirementLike("terminate_after", cond, node.lineno, None)
+
     def createRequirementLike(
         self,
         functionName: str,
@@ -1433,22 +1445,6 @@ class ScenicToPythonTransformer(Transformer):
                 ],
                 keywords=keywords,
             )
-        )
-
-    @context(Context.TOP_LEVEL)
-    def visit_TerminateAfter(self, node: s.TerminateAfter):
-        return ast.copy_location(
-            ast.Expr(
-                ast.Call(
-                    func=ast.Name(id="terminate_after", ctx=loadCtx),
-                    args=[
-                        self.visit(node.duration.value),
-                        ast.Constant(node.duration.unitStr),
-                    ],
-                    keywords=[],
-                )
-            ),
-            node,
         )
 
     @context(Context.TOP_LEVEL)
@@ -1683,9 +1679,20 @@ class ScenicToPythonTransformer(Transformer):
             ),
         )
 
-    def visit_ApparentHeadingOp(self, node: s.ApparentHeadingOp):
+    def visit_ApparentHeadingOfOp(self, node: s.ApparentHeadingOfOp):
         return ast.Call(
-            func=ast.Name(id="ApparentHeading", ctx=loadCtx),
+            func=ast.Name(id="ApparentHeadingOf", ctx=loadCtx),
+            args=[self.visit(node.target)],
+            keywords=(
+                []
+                if node.base is None
+                else [ast.keyword(arg="Y", value=self.visit(node.base))]
+            ),
+        )
+
+    def visit_ApparentHeadingToOp(self, node: s.ApparentHeadingToOp):
+        return ast.Call(
+            func=ast.Name(id="ApparentHeadingTo", ctx=loadCtx),
             args=[self.visit(node.target)],
             keywords=(
                 []
@@ -1855,6 +1862,46 @@ class ScenicToPythonTransformer(Transformer):
     def visit_IntersectsOp(self, node: s.IntersectsOp):
         return ast.Call(
             func=ast.Name(id="Intersects", ctx=loadCtx),
+            args=[
+                self.visit(node.left),
+                self.visit(node.right),
+            ],
+            keywords=[],
+        )
+
+    def visit_AheadOfOp(self, node: s.AheadOfOp):
+        return ast.Call(
+            func=ast.Name(id="AheadOfOp", ctx=loadCtx),
+            args=[
+                self.visit(node.left),
+                self.visit(node.right),
+            ],
+            keywords=[],
+        )
+
+    def visit_BehindOp(self, node: s.BehindOp):
+        return ast.Call(
+            func=ast.Name(id="BehindOp", ctx=loadCtx),
+            args=[
+                self.visit(node.left),
+                self.visit(node.right),
+            ],
+            keywords=[],
+        )
+
+    def visit_LeftOfOp(self, node: s.LeftOfOp):
+        return ast.Call(
+            func=ast.Name(id="LeftOfOp", ctx=loadCtx),
+            args=[
+                self.visit(node.left),
+                self.visit(node.right),
+            ],
+            keywords=[],
+        )
+
+    def visit_RightOfOp(self, node: s.RightOfOp):
+        return ast.Call(
+            func=ast.Name(id="RightOfOp", ctx=loadCtx),
             args=[
                 self.visit(node.left),
                 self.visit(node.right),

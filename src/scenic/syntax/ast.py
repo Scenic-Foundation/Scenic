@@ -435,7 +435,12 @@ class RelativeHeadingOp(AST):
     base: Optional[ast.AST] = None
 
 
-class ApparentHeadingOp(AST):
+class ApparentHeadingOfOp(AST):
+    target: ast.AST
+    base: Optional[ast.AST] = None
+
+
+class ApparentHeadingToOp(AST):
     target: ast.AST
     base: Optional[ast.AST] = None
 
@@ -654,5 +659,25 @@ class CanSeeOp(AST):
 
 
 class IntersectsOp(AST):
+    left: ast.AST
+    right: ast.AST
+
+
+class AheadOfOp(AST):
+    left: ast.AST
+    right: ast.AST
+
+
+class BehindOp(AST):
+    left: ast.AST
+    right: ast.AST
+
+
+class LeftOfOp(AST):
+    left: ast.AST
+    right: ast.AST
+
+
+class RightOfOp(AST):
     left: ast.AST
     right: ast.AST

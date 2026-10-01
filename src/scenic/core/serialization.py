@@ -16,6 +16,7 @@ import warnings
 
 from scenic.core.distributions import Samplable, needsSampling
 from scenic.core.utils import DefaultIdentityDict
+from scenic.core.vectors import Vector
 
 
 def deterministicHash(mapping, *, digest_size=8):
@@ -156,7 +157,7 @@ class Serializer:
         Must be incremented if the `writeScene` method or any of its helper
         methods (e.g. `writeValue`) change, or if a new codec is added.
         """
-        return 3
+        return 4
 
     @classmethod
     def replayFormatVersion(cls):
@@ -176,29 +177,53 @@ class Serializer:
         optionsHash = scenario.compileOptions.hash
         assert len(optionsHash) == 4
         self.stream.write(optionsHash)
+        if scene.externalSamplerInfo:
+            assert isinstance(scene.externalSamplerInfo, bytes)
+            self.writeValue(scene.externalSamplerInfo, bytes)
+        else:
+            self.writeValue(b"", bytes)
         self.writeSample(scenario.dependencies, scene.sample)
 
     def readScene(self, scenario, verify=True):
+        # Unpack version header and determine what metadata should be read.
         versionField = self.stream.read(2)
         if len(versionField) != 2:
             raise SerializationError("serialized Scene is corrupted")
         version = struct.unpack("<H", versionField)[0]
-        if version != self.sceneFormatVersion():
+        if version < 3:
             raise SerializationError(
-                "cannot read serialized Scene from " "a different Scenic version"
+                f"cannot read serialized Scene with version {version}"
             )
+        metatadaIncludes = {
+            "astHash": True,
+            "optionsHash": True,
+            "externalSamplerInfo": version >= 4,
+        }
+
+        # Parse metadata
+        assert metatadaIncludes["astHash"]
         astHash = self.stream.read(4)
         if verify and astHash != scenario.astHash:
             raise SerializationError(
                 "serialized Scene does not correspond to this Scenario"
             )
+
+        assert metatadaIncludes["optionsHash"]
         optionsHash = self.stream.read(4)
         if verify and optionsHash != scenario.compileOptions.hash:
             raise SerializationError(
                 "serialized Scene used different compile options " "than this Scenario"
             )
+
+        if metatadaIncludes["externalSamplerInfo"]:
+            externalSamplerInfo = self.readValue(bytes)
+        else:
+            externalSamplerInfo = None
+
         sample = self.readSample(scenario.dependencies)
         scene = scenario._makeSceneFromSample(sample)
+        scene.externalSamplerInfo = externalSamplerInfo if externalSamplerInfo else None
+
         return scene
 
     def writeSample(self, objects, values):

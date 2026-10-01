@@ -15,7 +15,7 @@ See the individual entries for details on each interface's capabilities and how 
 	Be sure to check the documentation of each simulator to confirm which Python versions are supported.
 
 .. note::
-	Scenic also supports outputting data in formats that may be imported into other simulators and tools (e.g. :ref:`xosc_export`).
+	Scenic also supports outputing data in formats that may be imported into other simulators and tools (e.g. :ref:`xosc_export`).
 	For more details, see :ref:`serialization`.
 
 .. contents:: List of Simulators
@@ -123,16 +123,6 @@ To start CARLA, run the command :command:`./CarlaUE4.sh` in your CARLA folder.
 Once CARLA is running, you can run dynamic Scenic scenarios following the instructions in :ref:`the dynamics tutorial <dynamics_running_examples>`.
 
 
-Grand Theft Auto V
-------------------
-
-The interface to `Grand Theft Auto V <https://www.rockstargames.com/V/>`_, used in `our PLDI paper`_, allows Scenic to position cars within the game as well as to control the time of day and weather conditions.
-Many examples using the interface (including all scenarios from the paper) can be found in :file:`examples/gta`.
-See the paper and `scenic.simulators.gta` for documentation.
-
-Importing scenes into GTA V and capturing rendered images requires a GTA V plugin, which you can find `here <https://github.com/xyyue/scenic2gta>`__.
-
-
 .. _isaac_sim:
 
 Isaac Sim / Isaac Lab
@@ -188,6 +178,18 @@ Deprecated
 
 Scenic previously provided interfaces to these simulators, but no longer does.
 See individual entries for the last version of Scenic providing the interface and the reason it is no longer supported.
+
+Grand Theft Auto V
+------------------
+
+The GTA simulator was deprecated in Scenic 3.2, as the method used to interface with GTA V was no longer usable.
+
+The interface to `Grand Theft Auto V <https://www.rockstargames.com/V/>`_, used in `our PLDI paper`_, allowed Scenic to position cars within the game as well as to control the time of day and weather conditions.
+Many examples using the interface (including all scenarios from the paper) can be found in :file:`examples/gta`. These examples can still be used to generate static scenes, but cannot be visualized in GTA V.
+See the paper and `scenic.simulators.gta` for documentation.
+
+Importing scenes into GTA V and capturing rendered images requires a GTA V plugin, which you can find `here <https://github.com/xyyue/scenic2gta>`__.
+
 
 LGSVL
 -----

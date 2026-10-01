@@ -101,7 +101,7 @@ class Recorder:
     def __init__(self):
         self._recording = False
 
-    def beginRecording(self, config, simulationName, timestep, globalParams):
+    def beginRecording(self, config, simulationName, timestep, globalParams, currentTime):
         assert not self._recording
         self._recording = True
         self.simulationName = simulationName
@@ -121,9 +121,10 @@ class Recorder:
         assert val >= 0, val
         if unit == "steps":
             assert isinstance(val, int), val
-            self._delay = val
+            delay = val
         else:  # unit == "seconds"
-            self._delay = max(0, math.floor(val / timestep))
+            delay = max(0, math.floor(val / timestep))
+        self._startTime = currentTime + delay
 
     def recordValue(self, value, step):
         raise NotImplementedError
@@ -133,7 +134,8 @@ class Recorder:
         self._recording = False
 
     def _record(self, value, step):
-        if step >= self._delay and step % self._period == 0:
+        relativeTime = step - self._startTime
+        if relativeTime >= 0 and relativeTime % self._period == 0:
             self.recordValue(np.asarray(value), step)
 
     @staticmethod
@@ -264,7 +266,7 @@ def videoHandler(path, values, timestep, options):
 
 @fileHandler("npz")
 def npzHandler(path, values, timestep, options):
-    timesteps, values = zip(*values)
+    timesteps, values = zip(*values) if values else ([], [])
     np.savez_compressed(path, timesteps=timesteps, values=values)
 
 

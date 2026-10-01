@@ -137,8 +137,9 @@ dmypy.json
 
 *.cproject
 
-# generated parser
+# generated parser and checksum
 src/scenic/syntax/parser.py
+src/scenic/syntax/.parser_checksum
 
 # generated media/output
 simulation.gif

@@ -214,7 +214,9 @@ class NewtonianSimulation(DrivingSimulation):
                     if obj.control["speed"] is not None
                     else obj.speed
                 )
+                obj.heading = h
                 obj.velocity = Vector(0, s).rotatedBy(h)
+                obj.speed = obj.velocity.norm()
             # 2) Vehicle: throttle/brake/steer physics
             elif getattr(obj, "isCar", False):
                 forward = obj.velocity.dot(Vector(0, 1).rotatedBy(obj.heading)) >= 0

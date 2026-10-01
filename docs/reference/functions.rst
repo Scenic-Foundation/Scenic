@@ -13,7 +13,7 @@ Miscellaneous Python Functions
 
 The following functions work in the same way as their Python counterparts except that they accept random values:
 
-* :obj:`~math.sin`, :obj:`~math.cos`, :obj:`~math.hypot` (from the Python `math` module)
+* :obj:`~math.sin`, :obj:`~math.cos`, :obj:`~math.tan`, :obj:`~math.hypot` (from the Python `math` module)
 * `len`, `max`, `min`, `round`
 * `float`, `int`, `str`
 

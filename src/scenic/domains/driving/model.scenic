@@ -41,7 +41,8 @@ from scenic.domains.driving.roads import (ManeuverType, Network, Road, Lane, Lan
                                           LaneGroup, Intersection, PedestrianCrossing,
                                           NetworkElement)
 from scenic.domains.driving.actions import *
-from scenic.domains.driving.behaviors import *
+from scenic.domains.driving.behaviors.steers import *
+from scenic.domains.driving.behaviors.walks import *
 
 from scenic.core.sensors import Sensor
 from scenic.core.distributions import RejectionException
@@ -270,6 +271,9 @@ class DrivingObject:
     def setVelocity(self, vel):
         raise NotImplementedError
 
+    def setOrientation(self, orientation):
+        raise NotImplementedError
+
 class Vehicle(DrivingObject):
     """Vehicles which drive, such as cars.
 
@@ -323,9 +327,20 @@ class Vehicle(DrivingObject):
     maxAcceleration: 5
     maxDeceleration: 10
 
+    lateralController: None
+    longitudinalController: None
+
     @property
     def isVehicle(self):
         return True
+
+    def startDynamicSimulation(self):
+        defaultLongitudinalController, defaultLateralController = simulation().getLaneFollowingControllers(self)
+
+        if self.longitudinalController is None:
+            self.longitudinalController = defaultLongitudinalController
+        if self.lateralController is None:
+            self.lateralController = defaultLateralController
 
 class Car(Vehicle):
     """A car."""

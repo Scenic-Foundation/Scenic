@@ -26,6 +26,7 @@ __all__ = (
     "terminate_when",
     "terminate_simulation_when",
     "terminate_after",
+    "check_time",
     "in_initial_scenario",
     "override",
     "record",
@@ -33,6 +34,7 @@ __all__ = (
     "record_final",
     "sin",
     "cos",
+    "tan",
     "hypot",
     "max",
     "min",
@@ -43,6 +45,8 @@ __all__ = (
     "round",
     "len",
     "range",
+    "orientedRegion",
+    "unorientedRegion",
     # Prefix operators
     "Visible",
     "NotVisible",
@@ -65,7 +69,8 @@ __all__ = (
     "BottomBackLeft",
     "BottomBackRight",
     "RelativeHeading",
-    "ApparentHeading",
+    "ApparentHeadingOf",
+    "ApparentHeadingTo",
     "RelativePosition",
     "DistanceFrom",
     "MinDistanceFrom",
@@ -85,6 +90,10 @@ __all__ = (
     "Implies",
     "VisibleFromOp",
     "NotVisibleFromOp",
+    "AheadOfOp",
+    "BehindOp",
+    "LeftOfOp",
+    "RightOfOp",
     # Primitive types
     "Vector",
     "Orientation",
@@ -117,11 +126,18 @@ __all__ = (
     "Discrete",
     "Normal",
     "TruncatedNormal",
+    "SeededGenerator",
     "VerifaiParameter",
     "VerifaiRange",
     "VerifaiDiscreteRange",
     "VerifaiOptions",
-    "TimeSeries",
+    "VerifaiSampler",
+    "OptunaRange",
+    "OptunaDiscreteRange",
+    "OptunaParameter",
+    "OptunaOptions",
+    "OptunaSampler",
+    "Series",
     "File",
     "Files",
     # Constructible types
@@ -191,6 +207,7 @@ from scenic.core.distributions import (
     Options,
     RandomControlFlowError,
     Range,
+    SeededGenerator,
     TruncatedNormal,
     Uniform,
 )
@@ -202,14 +219,22 @@ from scenic.core.dynamics.guards import (
 )
 from scenic.core.dynamics.invocables import BlockConclusion, runTryInterrupt
 from scenic.core.dynamics.scenarios import DynamicScenario
-from scenic.core.external_params import (
-    TimeSeries,
+from scenic.core.external_params import Series
+from scenic.core.external_params.optuna import (
+    OptunaDiscreteRange,
+    OptunaOptions,
+    OptunaParameter,
+    OptunaRange,
+    OptunaSampler,
+)
+from scenic.core.external_params.verifai import (
     VerifaiDiscreteRange,
     VerifaiOptions,
     VerifaiParameter,
     VerifaiRange,
+    VerifaiSampler,
 )
-from scenic.core.geometry import cos, hypot, max, min, sin
+from scenic.core.geometry import cos, hypot, max, min, sin, tan
 from scenic.core.object_types import Mutator, Object, OrientedPoint, Point
 from scenic.core.regions import (
     BoxRegion,
@@ -250,6 +275,7 @@ import collections.abc
 from contextlib import contextmanager
 import functools
 import importlib
+import math
 import numbers
 from pathlib import Path
 import sys
@@ -259,6 +285,7 @@ import warnings
 
 from scenic.core.distributions import (
     Distribution,
+    FunctionDistribution,
     MultiplexerDistribution,
     RejectionException,
     StarredDistribution,
@@ -290,6 +317,7 @@ from scenic.core.simulators import RejectSimulationException
 from scenic.core.specifiers import ModifyingSpecifier, Specifier
 from scenic.core.type_support import (
     Heading,
+    TypecheckedDistribution,
     canCoerce,
     coerce,
     evaluateRequiringEqualTypes,
@@ -552,31 +580,27 @@ def executeInRequirement(scenario, boundEgo, values):
     assert activity == 0
     assert not evaluatingRequirement
     evaluatingRequirement = True
-    if currentScenario is None:
-        currentScenario = scenario
-        clearScenario = True
-    else:
-        assert currentScenario is scenario
-        clearScenario = False
-    oldEgo = currentScenario._ego
-    oldObjects = currentScenario._objects
 
-    currentScenario._objects = tuple(values[obj] for obj in currentScenario.objects)
+    with executeInScenario(scenario):
+        oldEgo = scenario._ego
+        oldObjects = scenario._objects
 
-    if boundEgo:
-        currentScenario._ego = boundEgo
-    try:
-        yield
-    except RandomControlFlowError as e:
-        # Such errors should not be possible inside a requirement, since all values
-        # should have already been sampled: something's gone wrong with our rebinding.
-        raise RuntimeError("internal error: requirement dependency not sampled") from e
-    finally:
-        evaluatingRequirement = False
-        currentScenario._ego = oldEgo
-        currentScenario._objects = oldObjects
-        if clearScenario:
-            currentScenario = None
+        scenario._objects = tuple(values[obj] for obj in scenario.objects)
+
+        if boundEgo:
+            scenario._ego = boundEgo
+        try:
+            yield
+        except RandomControlFlowError as e:
+            # Such errors should not be possible inside a requirement, since all values
+            # should have already been sampled: something's gone wrong with our rebinding.
+            raise AssertionError(
+                "internal error: requirement dependency not sampled"
+            ) from e
+        finally:
+            evaluatingRequirement = False
+            scenario._ego = oldEgo
+            scenario._objects = oldObjects
 
 
 # Dynamic scenarios
@@ -858,22 +882,6 @@ def record_final(reqID, value, line, name):
     makeRequirement(requirements.RequirementType.recordFinal, reqID, value, line, name)
 
 
-def require_always(reqID, req, line, name):
-    """Function implementing the 'require always' statement."""
-    if not name:
-        name = f"requirement on line {line}"
-    makeRequirement(requirements.RequirementType.requireAlways, reqID, req, line, name)
-
-
-def require_eventually(reqID, req, line, name):
-    """Function implementing the 'require eventually' statement."""
-    if not name:
-        name = f"requirement on line {line}"
-    makeRequirement(
-        requirements.RequirementType.requireEventually, reqID, req, line, name
-    )
-
-
 def terminate_when(reqID, req, line, name):
     """Function implementing the 'terminate when' statement."""
     if not name:
@@ -890,23 +898,29 @@ def terminate_simulation_when(reqID, req, line, name):
     )
 
 
+def terminate_after(reqId, req, line, _):
+    name = "terminate after on line {line}"
+    makeRequirement(requirements.RequirementType.terminateAfter, reqId, req, line, name)
+
+
+def check_time(timeLimit, terminator=None):
+    """Returns True if we have exceeded the time limit."""
+    if not isinstance(timeLimit, (builtins.float, builtins.int)):
+        raise TypeError('"terminate after N" with N not a number')
+    assert terminator in (None, "seconds", "steps")
+    inSeconds = terminator != "steps"
+
+    threshold = timeLimit / simulation().timestep if inSeconds else timeLimit
+    return currentScenario._inherited._elapsedTime > threshold
+
+
 def makeRequirement(ty, reqID, req, line, name, recConfig=None):
     if evaluatingRequirement:
         raise InvalidScenarioError(f'tried to use "{ty.value}" inside a requirement')
     elif currentBehavior is not None:
         raise InvalidScenarioError(f'"{ty.value}" inside a behavior on line {line}')
-    elif currentSimulation is not None:
-        currentScenario._addDynamicRequirement(ty, req, line, name)
-    else:  # requirement being defined at compile time
+    else:
         currentScenario._addRequirement(ty, reqID, req, line, name, 1, recConfig)
-
-
-def terminate_after(timeLimit, terminator=None):
-    if not isinstance(timeLimit, (builtins.float, builtins.int)):
-        raise TypeError('"terminate after N" with N not a number')
-    assert terminator in (None, "seconds", "steps")
-    inSeconds = terminator != "steps"
-    currentScenario._setTimeLimit(timeLimit, inSeconds=inSeconds)
 
 
 def resample(dist):
@@ -1296,7 +1310,7 @@ def RelativeHeading(X, Y=None):
     return normalizeAngle(X.yaw - Y.yaw)
 
 
-def ApparentHeading(X, Y=None):
+def ApparentHeadingOf(X, Y=None):
     """The :grammar:`apparent heading of <oriented point> [from <vector>]` operator.
 
     If the :grammar:`from <vector>` is omitted, the position of ego is used.
@@ -1305,8 +1319,21 @@ def ApparentHeading(X, Y=None):
         raise TypeError('"apparent heading of X from Y" with X not an OrientedPoint')
     if Y is None:
         Y = ego()
-    Y = toVector(Y, '"relative heading of X from Y" with Y not a vector')
+    Y = toVector(Y, '"apparent heading of X from Y" with Y not a vector')
     return apparentHeadingAtPoint(X.position, X.heading, Y)
+
+
+def ApparentHeadingTo(X, Y=None):
+    """The :grammar:`apparent heading to <vector> [from <oriented point>]` operator.
+
+    If the :grammar:`from <oriented point>` is omitted, the ego is used.
+    """
+    X = toVector(X, '"apparent heading to X from Y" with X not a vector')
+    if Y is None:
+        Y = ego()
+    if not isA(Y, OrientedPoint):
+        raise TypeError('"apparent heading to X from Y" with Y not an OrientedPoint')
+    return Y.apparentHeadingTo(X)
 
 
 def DistanceFrom(X, Y=None):
@@ -1418,6 +1445,44 @@ def NotVisibleFromOp(region, base):
         raise TypeError('"X not visible from Y" with Y not a Point')
 
     return region.difference(base.visibleRegion)
+
+
+def AheadOfOp(X, Y):
+    """The :grammar:`<vector> ahead of <oriented point>` operator."""
+    X = toVector(X, '"X ahead of Y" with X not a vector')
+    if not isA(Y, OrientedPoint):
+        raise TypeError('"X ahead of Y" with Y not an OrientedPoint')
+
+    return math.radians(-89.99) < ApparentHeadingTo(X, Y) < math.radians(89.99)
+
+
+def BehindOp(X, Y):
+    """The :grammar:`<vector> behind <oriented point>` operator."""
+    X = toVector(X, '"X behind Y" with X not a vector')
+    if not isA(Y, OrientedPoint):
+        raise TypeError('"X behind Y" with Y not an OrientedPoint')
+
+    return ApparentHeadingTo(X, Y) < -math.radians(90.01) or math.radians(
+        90.01
+    ) < ApparentHeadingTo(X, Y)
+
+
+def LeftOfOp(X, Y):
+    """The :grammar:`<vector> left of <oriented point>` operator."""
+    X = toVector(X, '"X left of Y" with X not a vector')
+    if not isA(Y, OrientedPoint):
+        raise TypeError('"X left of Y" with Y not an OrientedPoint')
+
+    return math.radians(0.01) < ApparentHeadingTo(X, Y) < math.radians(180)
+
+
+def RightOfOp(X, Y):
+    """The :grammar:`<vector> right of <oriented point>` operator."""
+    X = toVector(X, '"X right of Y" with X not a vector')
+    if not isA(Y, OrientedPoint):
+        raise TypeError('"X right of Y" with Y not an OrientedPoint')
+
+    return -math.radians(180) < ApparentHeadingTo(X, Y) < math.radians(-0.01)
 
 
 def CanSee(X, Y):
@@ -1595,18 +1660,49 @@ def projectVectorHelper(region, pos, onDirection):
         return on_pos
 
 
+@distributionFunction
+def orientedRegion(region):
+    return region
+
+
+@distributionFunction
+def unorientedRegion(region):
+    return region
+
+
 def alwaysProvidesOrientation(region):
     """Whether a Region or distribution over Regions always provides an orientation."""
+    isOriented = lambda r: (
+        isinstance(region, TypecheckedDistribution)
+        and isinstance(region._dist, FunctionDistribution)
+        and region._dist.function.__name__ == "orientedRegion"  # TODO: IMPROVE THIS!!!
+    )
+
+    isUnoriented = lambda r: (
+        isinstance(region, TypecheckedDistribution)
+        and isinstance(region._dist, FunctionDistribution)
+        and region._dist.function.__name__ == "unorientedRegion"  # TODO: IMPROVE THIS!!!
+    )
+
     if isinstance(region, Region):
         return region.orientation is not None
     elif isinstance(region, MultiplexerDistribution) and all(
         alwaysProvidesOrientation(opt) for opt in region.options
     ):
         return True
+    elif isOriented(region):
+        return True
+    elif isUnoriented(region):
+        return False
     else:  # TODO improve somehow!
+        warnings.warn(
+            f"Cannot infer whether or not target always provides orientation.",
+            stacklevel=2,
+        )
         try:
             sample = region.sample()
-            return sample.orientation is not None or sample is nowhere
+            result = sample.orientation is not None or sample is nowhere
+            return result
         except RejectionException:
             return False
         except Exception as e:

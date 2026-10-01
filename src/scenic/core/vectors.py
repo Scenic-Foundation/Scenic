@@ -17,7 +17,7 @@ import warnings
 
 import numpy
 from scipy.spatial.transform import Rotation
-import shapely.geometry
+import shapely
 
 from scenic.core.distributions import (
     Distribution,
@@ -42,6 +42,7 @@ from scenic.core.type_support import (
     canCoerceType,
     coerceToFloat,
     toOrientation,
+    toVector,
 )
 from scenic.core.utils import argsToString, cached_property
 
@@ -56,6 +57,8 @@ class VectorDistribution(Distribution):
 
 
 class VectorOperatorDistribution(VectorDistribution):
+    _deterministic = True
+
     """Vector version of OperatorDistribution."""
 
     def __init__(self, operator, obj, operands):
@@ -451,7 +454,9 @@ class Vector(Samplable, collections.abc.Sequence):
 
     @staticmethod
     def _canCoerceType(ty):
-        return issubclass(ty, (tuple, list, numpy.ndarray)) or hasattr(ty, "toVector")
+        return issubclass(ty, (tuple, list, numpy.ndarray, shapely.Point)) or hasattr(
+            ty, "toVector"
+        )
 
     @staticmethod
     def _coerce(thing) -> Vector:
@@ -462,6 +467,8 @@ class Vector(Samplable, collections.abc.Sequence):
                     "expected 2D/3D vector, got " f"{type(thing).__name__} of length {l}"
                 )
             return Vector(*thing)
+        elif isinstance(thing, shapely.Point):
+            return Vector(*thing.coords[0])
         else:
             return thing.toVector()
 
@@ -704,6 +711,26 @@ class VectorField:
             val, f"value function of {self.name} returned non-orientation"
         )
 
+    @distributionMethod
+    def followFromTrajectory(self, pos, dist, steps=None, stepSize=None):
+        """Follow the field from a point for a given distance, returning intermediate points.
+
+        Uses the forward Euler approximation, covering the given distance with
+        equal-size steps. The number of steps can be given manually, or computed
+        automatically from a desired step size.
+
+        Arguments:
+            pos (`Vector`): point to start from.
+            dist (float): distance to travel.
+            steps (int): number of steps to take, or :obj:`None` to compute the number of
+                steps based on the distance (default :obj:`None`).
+            stepSize (float): length used to compute how many steps to take, or
+                :obj:`None` to use the field's default step size.
+        """
+        return self._followFromHelper(
+            toVector(pos), dist, steps, stepSize, allPoints=True
+        )
+
     @vectorDistributionMethod
     def followFrom(self, pos, dist, steps=None, stepSize=None):
         """Follow the field from a point for a given distance.
@@ -720,6 +747,16 @@ class VectorField:
             stepSize (float): length used to compute how many steps to take, or
                 :obj:`None` to use the field's default step size.
         """
+        return self._followFromHelper(
+            toVector(pos), dist, steps, stepSize, allPoints=False
+        )
+
+    def _followFromHelper(self, pos, dist, steps, stepSize, allPoints):
+        if allPoints:
+            from scenic.core.regions import PolylineRegion
+
+            pts = []
+
         if steps is None:
             steps = self.minSteps
             stepSize = self.defaultStepSize if stepSize is None else stepSize
@@ -731,8 +768,10 @@ class VectorField:
         for i in range(steps):
             rot = self[pos].getRotation()
             pos += rot.apply(step)
+            if allPoints:
+                pts.append(Vector(*pos))
 
-        return Vector(*pos)
+        return PolylineRegion(points=pts) if allPoints else Vector(*pos)
 
     @staticmethod
     def forUnionOf(regions, tolerance=0):

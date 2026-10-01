@@ -241,6 +241,7 @@ class Constructible(Samplable):
         # Resolve specifiers
         newspecs = cls._prepareSpecifiers(specifiers)
         properties, consts = cls._resolveSpecifiers(newspecs)
+
         if constProps is None:
             constProps = consts
 
@@ -988,6 +989,10 @@ class OrientedPoint(Point):
         diff = self.position - vec
         return diff.rotatedBy(-self.heading).y
 
+    def apparentHeadingTo(self, vec):
+        """The apparent heading to a given point, from the perspective of this `OrientedPoint`."""
+        return normalizeAngle(self.position.angleTo(vec) - self.heading)
+
     def toHeading(self) -> float:
         return self.heading
 
@@ -1172,7 +1177,7 @@ class Object(OrientedPoint):
     def minimumDistanceTo(self, other):
         """The minimal distance between this object and another."""
         if not isinstance(other, Object):
-            raise TypeError(
+            raise RuntimeError(
                 f"Cannot compute minimum distance between Object and {type(other)} "
             )
 

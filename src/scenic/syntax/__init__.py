@@ -1,5 +1,6 @@
 """The Scenic compiler and associated support code."""
 
+import hashlib as _hashlib
 import pathlib as _pathlib
 import subprocess as _subprocess
 import sys as _sys
@@ -8,6 +9,7 @@ _syntaxDir = _pathlib.Path(__file__).parent
 _projectRootDir = _syntaxDir.parent.parent.parent
 _grammarPath = _syntaxDir / "scenic.gram"
 _parserPath = _syntaxDir / "parser.py"
+_checksumPath = _syntaxDir / ".parser_checksum"
 
 
 def buildParser():
@@ -30,10 +32,30 @@ def buildParser():
         capture_output=True,
         text=True,
     )
+
+    with open(_checksumPath, "wb") as f:
+        f.write(getGrammarHash())
+
     return result
 
 
-if not _parserPath.exists():
+def getGrammarHash():
+    with open(_grammarPath, "rb") as f:
+        data = f.read()
+    return _hashlib.blake2b(data).digest()
+
+
+def checksumValid():
+    if not _checksumPath.exists():
+        return False
+
+    with open(_checksumPath, "rb") as f:
+        checksum = f.read()
+
+    return checksum == getGrammarHash()
+
+
+if not _parserPath.exists() or not checksumValid():
     _result = buildParser()
     _retcode = _result.returncode
     if _retcode != 0:

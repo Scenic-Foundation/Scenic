@@ -1803,6 +1803,10 @@ bitwise_or:
     | scenic_not_visible_from
     | scenic_can_see
     | scenic_intersects
+    | a=bitwise_or "ahead" "of" b=bitwise_xor { s.AheadOfOp(left=a, right=b, LOCATIONS) }
+    | a=bitwise_or "behind" b=bitwise_xor { s.BehindOp(left=a, right=b, LOCATIONS) }
+    | a=bitwise_or "left" "of" b=bitwise_xor { s.LeftOfOp(left=a, right=b, LOCATIONS) }
+    | a=bitwise_or "right" "of" b=bitwise_xor { s.RightOfOp(left=a, right=b, LOCATIONS) }
     | a=bitwise_or '|' b=bitwise_xor { ast.BinOp(left=a, op=ast.BitOr(), right=b, LOCATIONS) }
     | bitwise_xor
 
@@ -1846,8 +1850,11 @@ scenic_prefix_operators:
     | "relative" "heading" "of" e1=expression 'from' e2=scenic_prefix_operators { s.RelativeHeadingOp(target=e1, base=e2, LOCATIONS) }
     | "relative" "heading" "of" e1=scenic_prefix_operators { s.RelativeHeadingOp(target=e1, LOCATIONS) }
     # apparent heading of
-    | "apparent" "heading" "of" e1=expression 'from' e2=scenic_prefix_operators { s.ApparentHeadingOp(target=e1, base=e2, LOCATIONS) }
-    | "apparent" "heading" "of" e1=scenic_prefix_operators { s.ApparentHeadingOp(target=e1, LOCATIONS) }
+    | "apparent" "heading" "of" e1=expression 'from' e2=scenic_prefix_operators { s.ApparentHeadingOfOp(target=e1, base=e2, LOCATIONS) }
+    | "apparent" "heading" "of" e1=scenic_prefix_operators { s.ApparentHeadingOfOp(target=e1, LOCATIONS) }
+    # apparent heading to
+    | "apparent" "heading" "to" e1=expression 'from' e2=scenic_prefix_operators { s.ApparentHeadingToOp(target=e1, base=e2, LOCATIONS) }
+    | "apparent" "heading" "to" e1=scenic_prefix_operators { s.ApparentHeadingToOp(target=e1, LOCATIONS) }
     # distance from/to
     | &"distance" scenic_distance_from_op
     # distance past

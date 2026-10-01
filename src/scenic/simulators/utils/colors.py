@@ -78,6 +78,8 @@ class NoisyColorDistribution(Distribution):
         lightNoise (float): noise to add to base lightness
     """
 
+    _deterministic = True
+
     def __init__(self, baseColor, hueNoise, satNoise, lightNoise):
         super().__init__(baseColor, hueNoise, satNoise, lightNoise, valueType=Color)
         self.baseColor = baseColor

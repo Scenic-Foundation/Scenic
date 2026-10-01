@@ -1710,20 +1710,58 @@ class TestCompiler:
                 assert False
 
     def test_terminate_after_seconds(self):
-        node, _ = compileScenicAST(TerminateAfter(Seconds(Constant(10))))
+        node, _ = compileScenicAST(TerminateAfter(Seconds(Constant(10)), lineno=2))
         match node:
             case Expr(
-                Call(Name("terminate_after"), [Constant(10), Constant("seconds")], [])
+                Call(
+                    Name("terminate_after"),
+                    [
+                        Constant(0),  # reqId
+                        Call(
+                            Name("AtomicProposition"),
+                            [
+                                Lambda(
+                                    arguments(),
+                                    Call(
+                                        Name("check_time"),
+                                        [Constant(10), Constant("seconds")],
+                                    ),
+                                )
+                            ],
+                        ),
+                        Constant(2),  # lineno
+                        Constant(None),  # name
+                    ],
+                )
             ):
                 assert True
             case _:
                 assert False
 
     def test_terminate_after_steps(self):
-        node, _ = compileScenicAST(TerminateAfter(Steps(Constant(20))))
+        node, _ = compileScenicAST(TerminateAfter(Steps(Constant(20)), lineno=2))
         match node:
             case Expr(
-                Call(Name("terminate_after"), [Constant(20), Constant("steps")], [])
+                Call(
+                    Name("terminate_after"),
+                    [
+                        Constant(0),  # reqId
+                        Call(
+                            Name("AtomicProposition"),
+                            [
+                                Lambda(
+                                    arguments(),
+                                    Call(
+                                        Name("check_time"),
+                                        [Constant(20), Constant("steps")],
+                                    ),
+                                )
+                            ],
+                        ),
+                        Constant(2),  # lineno
+                        Constant(None),  # name
+                    ],
+                )
             ):
                 assert True
             case _:
@@ -2075,18 +2113,34 @@ class TestCompiler:
             case _:
                 assert False
 
-    def test_apparent_heading_op(self):
-        node, _ = compileScenicAST(ApparentHeadingOp(Name("X")))
+    def test_apparent_heading_of_op(self):
+        node, _ = compileScenicAST(ApparentHeadingOfOp(Name("X")))
         match node:
-            case Call(Name("ApparentHeading"), [Name("X")]):
+            case Call(Name("ApparentHeadingOf"), [Name("X")]):
                 assert True
             case _:
                 assert False
 
-    def test_apparent_heading_op_base(self):
-        node, _ = compileScenicAST(ApparentHeadingOp(Name("X"), Name("Y")))
+    def test_apparent_heading_of_op_base(self):
+        node, _ = compileScenicAST(ApparentHeadingOfOp(Name("X"), Name("Y")))
         match node:
-            case Call(Name("ApparentHeading"), [Name("X")], [keyword("Y", Name("Y"))]):
+            case Call(Name("ApparentHeadingOf"), [Name("X")], [keyword("Y", Name("Y"))]):
+                assert True
+            case _:
+                assert False
+
+    def test_apparent_heading_to_op(self):
+        node, _ = compileScenicAST(ApparentHeadingToOp(Name("X")))
+        match node:
+            case Call(Name("ApparentHeadingTo"), [Name("X")]):
+                assert True
+            case _:
+                assert False
+
+    def test_apparent_heading_to_op_base(self):
+        node, _ = compileScenicAST(ApparentHeadingToOp(Name("X"), Name("Y")))
+        match node:
+            case Call(Name("ApparentHeadingTo"), [Name("X")], [keyword("Y", Name("Y"))]):
                 assert True
             case _:
                 assert False
@@ -2302,6 +2356,38 @@ class TestCompiler:
         node, _ = compileScenicAST(OffsetAlongOp(Name("X"), Name("Y"), Name("Z")))
         match node:
             case Call(Name("OffsetAlong"), [Name("X"), Name("Y"), Name("Z")]):
+                assert True
+            case _:
+                assert False
+
+    def test_ahead_of_op(self):
+        node, _ = compileScenicAST(AheadOfOp(Name("X"), Name("Y")))
+        match node:
+            case Call(Name("AheadOfOp"), [Name("X"), Name("Y")]):
+                assert True
+            case _:
+                assert False
+
+    def test_behind_op(self):
+        node, _ = compileScenicAST(BehindOp(Name("X"), Name("Y")))
+        match node:
+            case Call(Name("BehindOp"), [Name("X"), Name("Y")]):
+                assert True
+            case _:
+                assert False
+
+    def test_left_of_op(self):
+        node, _ = compileScenicAST(LeftOfOp(Name("X"), Name("Y")))
+        match node:
+            case Call(Name("LeftOfOp"), [Name("X"), Name("Y")]):
+                assert True
+            case _:
+                assert False
+
+    def test_right_of_op(self):
+        node, _ = compileScenicAST(RightOfOp(Name("X"), Name("Y")))
+        match node:
+            case Call(Name("RightOfOp"), [Name("X"), Name("Y")]):
                 assert True
             case _:
                 assert False

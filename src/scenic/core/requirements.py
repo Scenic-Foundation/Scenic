@@ -15,6 +15,7 @@ from scenic.core.distributions import Samplable, needsSampling, toDistribution
 from scenic.core.errors import InvalidScenarioError
 from scenic.core.lazy_eval import needsLazyEvaluation
 from scenic.core.propositions import Atomic, PropositionNode
+from scenic.core.utils import DefaultIdentityDict
 import scenic.syntax.relations as relations
 
 
@@ -27,6 +28,7 @@ class RequirementType(enum.Enum):
     monitor = "require monitor"
     terminateWhen = "terminate when"
     terminateSimulationWhen = "terminate simulation when"
+    terminateAfter = "terminate after"
 
     # recorded values, which aren't requirements but are handled similarly
     record = "record"
@@ -457,6 +459,10 @@ class CompiledRequirement(SamplingRequirement):
     def falsifiedByInner(self, sample):
         one_time_monitor = self.proposition.create_monitor()
         return self.closure(sample, one_time_monitor) == rv_ltl.B4.FALSE
+
+    def evaluate(self):
+        # Used only for `terminate when`, etc. defined in setup blocks of subscenarios
+        return self.closure(DefaultIdentityDict())
 
     def __str__(self):
         if self.name:
