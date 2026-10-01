@@ -885,6 +885,9 @@ class DifferenceRegion(Region):
 
 
 def toPolygon(thing):
+    if isinstance(thing, shapely.geometry.base.BaseGeometry):
+        return thing
+
     if needsSampling(thing):
         return None
     if hasattr(thing, "polygon"):
