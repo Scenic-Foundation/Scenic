@@ -2348,11 +2348,6 @@ class RoadMap:
                     seenConnectingRoads.add(connectingID)
                     junctionCrossings.extend(connectingRoad.crossings)
 
-                for signal in connectingRoad.signals:
-                    if signal.openDriveID not in seenSignals:
-                        allSignals.append(signal)
-                        seenSignals.add(signal.openDriveID)
-
                 # Find possible incoming lanes for this connection
                 if incomingID not in seenRoads:
                     allRoads.append(incomingRoad)
