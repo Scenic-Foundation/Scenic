@@ -11,6 +11,8 @@ from pacti.contracts import PropositionalIoContract
 from scenic.contracts.components import ActionComponent, BaseComponent, ComposeComponent
 from scenic.contracts.contracts import ContractResult, VerificationTechnique
 import scenic.contracts.specifications as specs
+from scenic.contracts.assumption import Assumption
+from scenic.contracts.proof import LeanContractProof
 from scenic.contracts.testing import Testing, SimulationTestingContractResult, SimulationTestData, TestResult
 from scenic.core.distributions import Options, Range
 from scenic.syntax.compiler import NameFinder, NameSwapTransformer
@@ -378,8 +380,13 @@ class WeakMerge(VerificationTechnique):
 
         self.static_assumptions = {stmt: all(WeakMerge.checkStatic(a) for a in stmt.assumptions) for stmt in self.sub_stmts}
 
-        # TODO: Remove limitation of 2 sub-contracts
-        if len(sub_stmts) == 2 and sum(self.static_assumptions.values()) >= 1:
+        # TODO: Remove limitation of 2 sub-contracts with one "confirmed"
+        is_confirmed = lambda s: isinstance(s, LeanContractProof) or (isinstance(s, Assumption) and s.correctness == 1)
+
+        if (len(sub_stmts) == 2
+            and sum(self.static_assumptions.values()) >= 1
+            and len(tuple(filter(is_confirmed, sub_stmts))) >= 1
+            ):
             self.weak_merge_speedup = True
         else:
             self.weak_merge_speedup = False
