@@ -8,7 +8,7 @@ from pathlib import Path
 import subprocess
 
 from scenic.contracts.contracts import ContractResult, VerificationTechnique
-from scenic.contracts.specifications import Atomic, Implies
+from scenic.contracts.specifications import Atomic, Implies, successorGuardToLean
 from scenic.syntax.compiler import NameConstantTransformer
 
 
@@ -221,7 +221,7 @@ class LeanContractProof(VerificationTechnique):
                 f.write(f"abbrev F{f_iter} := LLTL[𝐆 ((←{o_name}) = (←CF_{o_sig}))]\n")
                 f_iter += 1
             for o_name, o_sig in self.state_signals.items():
-                f.write(f"abbrev F{f_iter} := LLTL[𝐆 ((𝐗 (←{o_name}) = (←CF_{o_sig})))]\n")
+                f.write(f"abbrev F{f_iter} := LLTL[𝐆 (({successorGuardToLean(1)}) → ((𝐗 (←{o_name})) = (←CF_{o_sig})))]\n")
                 f_iter += 1
             f.write("\n")
             f.write(

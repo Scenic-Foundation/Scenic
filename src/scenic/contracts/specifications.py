@@ -481,7 +481,14 @@ class Always(UnarySpecNode):
         return f"G({self.sub.toPACTIStr(pactiAtomicsDict)})"
 
     def toLean(self, *, ctx=bool, includeGets=True):
-        return f"𝐆 ({self.sub.toLean(includeGets=includeGets)})"
+        sub = self.sub.toLean(includeGets=includeGets)
+        k = specLookahead(self.sub)
+        if k and not (
+            isinstance(self.sub, Implies)
+            and successorGuardDepth(self.sub.sub1) >= specLookahead(self.sub.sub2)
+        ):
+            return f"𝐆 (({successorGuardToLean(k)}) → ({sub}))"
+        return f"𝐆 ({sub})"
 
     def __str__(self):
         return f"always ({self.sub})"
@@ -491,7 +498,18 @@ class Eventually(UnarySpecNode):
     ctx = bool
 
     def toLean(self, ctx=bool, includeGets=True):
-        return f"𝐅 ({self.sub.toLean(includeGets=includeGets)})"
+        sub = self.sub.toLean(includeGets=includeGets)
+        k = specLookahead(self.sub)
+        if k and not (
+            isinstance(self.sub, And)
+            and any(
+                successorGuardDepth(guard)
+                >= max(specLookahead(s) for s in self.sub.subs if s is not guard)
+                for guard in self.sub.subs
+            )
+        ):
+            return f"𝐅 (({successorGuardToLean(k)}) ∧ ({sub}))"
+        return f"𝐅 ({sub})"
 
     def __str__(self):
         return f"eventually ({self.sub})"
@@ -713,3 +731,45 @@ class Or(NarySpecNode):
     def __str__(self):
         return " or ".join(f"({str(sub)})" for sub in self.subs)
 
+
+def specLookahead(spec):
+    """The number of successor states `spec` reads at a step.
+
+    Nested temporal operators are not counted, since each adds its own successor guard.
+    """
+    if isinstance(spec, (Always, Eventually, Until)):
+        return 0
+    if isinstance(spec, Next):
+        return 1 + specLookahead(spec.sub)
+    if isinstance(spec, DefSpecNode):
+        return specLookahead(spec.defSpecs[spec.name])
+    if isinstance(spec, UnarySpecNode):
+        return specLookahead(spec.sub)
+    if isinstance(spec, BinarySpecNode):
+        return max(specLookahead(spec.sub1), specLookahead(spec.sub2))
+    if isinstance(spec, NarySpecNode):
+        return max(specLookahead(sub) for sub in spec.subs)
+    return 0
+
+
+def successorGuardDepth(spec):
+    """k if `spec` is `not (next ... next False)` with k nexts, and 0 otherwise."""
+    if not isinstance(spec, Not):
+        return 0
+    k, sub = 0, spec.sub
+    while isinstance(sub, Next):
+        k, sub = k + 1, sub.sub
+    if k and isinstance(sub, ConstantSpecNode) and sub.value is False:
+        return k
+    return 0
+
+
+def successorGuardToLean(k):
+    """A Lean proposition that holds at a step iff at least k successor states exist.
+
+    Under `𝐆` it is the premise of an implication, so the final k steps are exempt from
+    reads past the end of the trace. Under `𝐅` it is a conjunct, so those steps cannot
+    witness the eventuality.
+    """
+    shift = "𝐗ʷ" if k == 1 else f"𝐗ʷ({k})"
+    return f"¬({shift} (False))"
