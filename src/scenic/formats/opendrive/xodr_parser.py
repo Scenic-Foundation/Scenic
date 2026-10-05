@@ -34,6 +34,88 @@ def warn(message):
     warnings.warn(message, OpenDriveWarning, stacklevel=2)
 
 
+def speed_to_mps(speed_elem):
+    """Convert an OpenDRIVE ``<speed>`` element to m/s."""
+    raw = speed_elem.get("max")
+    if raw in ("no limit", "undefined"):
+        return None
+    value = float(raw)
+    unit = speed_elem.get("unit", "m/s")
+    if unit == "m/s":
+        return value
+    elif unit == "km/h":
+        return value / 3.6
+    elif unit == "mph":
+        return value * 0.44704
+    else:
+        raise ValueError(f"unsupported speed unit: {unit!r}")
+
+
+def _speed_limit_ranges_from_s_speed_records(sorted_records, domain_length):
+    """Build ``(s_start, speed_mps)`` ranges from ``[(s, speed_mps), ...]``.
+
+    Each record keeps its own speed, with no inheritance from a previous record.
+    An undefined leading stretch is emitted with an explicit ``None`` value so
+    that coverage begins at zero.
+    """
+    # Already sorted in speed_limit_ranges_from_type_records
+    if sorted_records[0][0] > 0:
+        sorted_records = [(0.0, None)] + sorted_records
+
+    normalized = []
+    for s, speed_mps in sorted_records:
+        if s >= domain_length:
+            continue
+        if normalized and normalized[-1][0] == s:
+            normalized[-1] = (s, speed_mps)
+        else:
+            normalized.append((s, speed_mps))
+
+    ranges = []
+    for s, speed_mps in normalized:
+        if not ranges or ranges[-1][1] != speed_mps:
+            ranges.append((s, speed_mps))
+
+    return ranges
+
+
+def speed_limit_ranges_from_type_records(type_records, road_length):
+    """Build ``(s_start, speed_mps)`` ranges from OpenDRIVE ``<type>`` records."""
+    if not type_records:
+        return []
+
+    sorted_records = sorted(type_records, key=lambda record: record[0])
+    # Each <type> keeps its own speed (may be None); no inheritance across types.
+    s_speed_records = [(s, speed_mps) for s, _road_type, speed_mps in sorted_records]
+    return _speed_limit_ranges_from_s_speed_records(s_speed_records, road_length)
+
+
+def _speed_limit_at(ranges, s):
+    """Get the speed active at *s* from nonempty, ordered speed ranges."""
+    speed = ranges[0][1]
+    for range_start, range_speed in ranges[1:]:
+        if s < range_start:
+            break
+        speed = range_speed
+    return speed
+
+
+def speed_limits_for_s_interval(ranges, s_start, s_end):
+    """Speed limits applying to the interval ``[s_start, s_end)``.
+
+    Returns a frozenset of every limit in ``ranges`` that overlaps the interval.
+    """
+    if not ranges or s_start >= s_end:
+        return frozenset()
+
+    speeds = {_speed_limit_at(ranges, s_start)}
+    speeds.update(
+        speed for range_start, speed in ranges[1:] if s_start < range_start < s_end
+    )
+    speeds.discard(None)
+    return frozenset(speeds)
+
+
 def buffer_union(polys, tolerance=0.01):
     return polygonUnion(polys, buf=tolerance, tolerance=tolerance)
 
@@ -286,6 +368,7 @@ class Lane:
     def __init__(self, id_, type_, pred=None, succ=None):
         self.id_ = id_
         self.width = []  # List of tuples (Poly3, int) for width and s-offset.
+        self.speed_records = []  # [(sOffset, speed_mps), ...] from <speed> elements.
         self.type_ = type_
         self.pred = pred
         self.succ = succ
@@ -374,9 +457,11 @@ class Junction:
             # dict mapping incoming to connecting lane ids (empty = identity mapping)
             self.lane_links = lane_links
 
-    def __init__(self, id_, name):
+    def __init__(self, id_, name, type_="default"):
         self.id_ = id_
         self.name = name
+        self.type_ = type_
+        self.tags = frozenset({type_} if type_ and type_ != "default" else ())
         self.connections = []
         # Ids of roads that are paths within junction:
         self.paths = []
@@ -418,6 +503,9 @@ class Road:
         self.end_bounds_right = {}
 
         self.remappedStartLanes = None  # hack for handling spurious initial lane sections
+
+        self.type_records = []  # [(s, openDriveRoadType, speedLimitMps), ...]
+        self.extra_tags = frozenset()
 
     def get_ref_line_offset(self, s):
         if not self.offset:
@@ -767,15 +855,47 @@ class Road:
 
     def toScenicRoad(self, tolerance):
         assert self.sec_points
+
+        # collect speed ranges from type records and total road length
+        speed_ranges = speed_limit_ranges_from_type_records(
+            self.type_records, self.length
+        )
+
+        type_tags = frozenset(
+            open_drive_type for _, open_drive_type, _ in self.type_records
+        )
+        road_level_tags = frozenset(type_tags | self.extra_tags)
         allElements = []
         # Create lane and road sections
         roadSections = []
         last_section = None
         forwardSidewalks, backwardSidewalks = [], []
         forwardShoulders, backwardShoulders = [], []
-        for sec, pts, sec_poly, lane_polys in zip(
-            self.lane_secs, self.sec_points, self.sec_polys, self.sec_lane_polys
+        for sec_index, (sec, pts, sec_poly, lane_polys) in enumerate(
+            zip(
+                self.lane_secs,
+                self.sec_points,
+                self.sec_polys,
+                self.sec_lane_polys,
+            )
         ):
+            s_start = sec.s0
+            s_end = (
+                self.lane_secs[sec_index + 1].s0
+                if sec_index + 1 < len(self.lane_secs)
+                else self.length
+            )
+            overlapping_speeds = speed_limits_for_s_interval(speed_ranges, s_start, s_end)
+            section_speed_limit = min(overlapping_speeds, default=None)
+            if len(overlapping_speeds) > 1:
+                speeds_text = ", ".join(
+                    f"{speed:.4g} m/s" for speed in sorted(overlapping_speeds)
+                )
+                warn(
+                    f"road {self.id_} section s=[{s_start},{s_end}):"
+                    f" spans multiple speed limits {{{speeds_text}}};"
+                    f" using minimum {section_speed_limit:.4g} m/s"
+                )
             pts = [pt[:2] for pt in pts]  # drop s coordinate
             assert sec.drivable_lanes
             laneSections = {}
@@ -809,6 +929,7 @@ class Road:
                     road=None,
                     openDriveID=id_,
                     isForward=id_ < 0,
+                    tags=frozenset({lane.type_} if lane.type_ else ()),
                 )
                 section._original_lane = lane
                 laneSections[id_] = section
@@ -823,9 +944,56 @@ class Road:
                 predecessor=last_section,
                 road=None,  # will set later
                 lanesByOpenDriveID=laneSections,
+                tags=road_level_tags,
             )
             roadSections.append(section)
             allElements.append(section)
+
+            if section_speed_limit is not None and section.speedLimit is None:
+                section.speedLimit = section_speed_limit
+            section_length = s_end - s_start
+            if speed_ranges:
+                section_end = s_start + section_length
+                road_ranges = [(0.0, _speed_limit_at(speed_ranges, s_start))]
+                road_ranges.extend(
+                    (range_start - s_start, speed)
+                    for range_start, speed in speed_ranges[1:]
+                    if s_start < range_start < section_end
+                )
+            else:
+                road_ranges = []
+            for id_, lane_section in laneSections.items():
+                lane = sec.drivable_lanes[id_]
+                # Unspecified parts of a lane keep the road speed; a lane <speed>
+                # overrides from its sOffset until the next one or the section end.
+                if not lane.speed_records:
+                    effective_ranges = road_ranges
+                else:
+                    first_offset = lane.speed_records[0][0]
+                    records = [r for r in road_ranges if r[0] < first_offset]
+                    records.extend(
+                        rec for rec in lane.speed_records if rec[0] < section_length
+                    )
+                    effective_ranges = (
+                        _speed_limit_ranges_from_s_speed_records(records, section_length)
+                        if records
+                        else road_ranges
+                    )
+                if not effective_ranges:
+                    continue
+                speeds = {speed for _, speed in effective_ranges if speed is not None}
+                lane_section.speedLimit = min(speeds) if speeds else None
+                lane_section.speedLimitRanges = tuple(effective_ranges)
+                if len(speeds) > 1:
+                    speeds_text = ", ".join(
+                        f"{speed:.4g} m/s" for speed in sorted(speeds)
+                    )
+                    warn(
+                        f"road {self.id_} lane {id_} section s=[{s_start},{s_end}):"
+                        f" spans multiple speed limits {{{speeds_text}}};"
+                        f" using minimum {lane_section.speedLimit:.4g} m/s"
+                    )
+
             last_section = section
 
             fss, bss = {}, {}
@@ -1017,6 +1185,20 @@ class Road:
                     adj.append(lane._laneToRight)
                 lane.adjacentLanes = tuple(adj)
 
+        section_speed_limits = [
+            section.speedLimit
+            for section in roadSections
+            if section.speedLimit is not None
+        ]
+        road_speed_limit = min(section_speed_limits, default=None)
+        if road_speed_limit is not None:
+            for section in roadSections:
+                if section.speedLimit is None:
+                    section.speedLimit = road_speed_limit
+                for lane_section in section.lanes:
+                    if lane_section.speedLimit is None:
+                        lane_section.speedLimit = road_speed_limit
+
         # Gather lane sections into lanes
         nextID = 0
         forwardLanes, backwardLanes = [], []
@@ -1058,6 +1240,11 @@ class Road:
                     leftEdge = PolylineRegion(cleanChain(leftPoints))
                     rightEdge = PolylineRegion(cleanChain(rightPoints))
                     centerline = PolylineRegion(cleanChain(centerPoints))
+                    lane_section_speed_limits = [
+                        section.speedLimit
+                        for section in sections
+                        if section.speedLimit is not None
+                    ]
                     lane = roadDomain.Lane(
                         id=f"road{self.id_}_lane{nextID}",
                         polygon=ls.parent_lane_poly,
@@ -1068,6 +1255,8 @@ class Road:
                         road=None,
                         sections=tuple(sections),
                         successor=successorLane,  # will correct inter-road links later
+                        tags=frozenset().union(*(sec.tags for sec in sections)),
+                        speedLimit=min(lane_section_speed_limits, default=None),
                     )
                     nextID += 1
                     for section in sections:
@@ -1128,6 +1317,7 @@ class Road:
                 bikeLane=None,
                 shoulder=forwardShoulder,
                 opposite=None,
+                tags=road_level_tags,
             )
             allElements.append(forwardGroup)
         else:
@@ -1149,6 +1339,7 @@ class Road:
                 bikeLane=None,
                 shoulder=backwardShoulder,
                 opposite=forwardGroup,
+                tags=road_level_tags,
             )
             allElements.append(backwardGroup)
             if forwardGroup:
@@ -1192,8 +1383,17 @@ class Road:
             sections=roadSections,
             signals=tuple(roadSignals),
             crossings=(),  # TODO add these!
+            speedLimit=road_speed_limit,
+            tags=road_level_tags,
         )
         allElements.append(road)
+        if road_speed_limit is not None:
+            for group in road.laneGroups:
+                if group.speedLimit is None:
+                    group.speedLimit = road_speed_limit
+            for lane in lanes:
+                if lane.speedLimit is None:
+                    lane.speedLimit = road_speed_limit
 
         # Set up parent references
         if forwardGroup:
@@ -1266,12 +1466,18 @@ class RoadMap:
             "driving",
             "entry",
             "exit",
-            "offRamp",
             "onRamp",
+            "offRamp",
             "connectingRamp",
+            "slipLane",
         ),
-        sidewalk_lane_types=("sidewalk",),
-        shoulder_lane_types=("shoulder", "parking", "stop", "border"),
+        sidewalk_lane_types=("walking", "sidewalk"),  # sidewalk deprecated
+        shoulder_lane_types=(
+            "shoulder",
+            "border",
+            "parking",
+            "stop",
+        ),
         elide_short_roads=False,
     ):
         self.tolerance = self.defaultTolerance if tolerance is None else tolerance
@@ -1425,6 +1631,11 @@ class RoadMap:
                     float(w.get("d")),
                 )
                 lane.width.append((w_poly, float(w.get("sOffset"))))
+            for speed_elem in l.iter("speed"):
+                lane.speed_records.append(
+                    (float(speed_elem.get("sOffset", 0)), speed_to_mps(speed_elem))
+                )
+            lane.speed_records.sort(key=lambda record: record[0])
             lanes[id_] = lane
         return lanes
 
@@ -1484,7 +1695,7 @@ class RoadMap:
 
         # parse junctions
         for j in root.iter("junction"):
-            junction = Junction(int(j.get("id")), j.get("name"))
+            junction = Junction(int(j.get("id")), j.get("name"), j.get("type", "default"))
             for c in j.iter("connection"):
                 ty = c.get("type", "default")
                 if ty != "default":
@@ -1529,6 +1740,13 @@ class RoadMap:
                 succ_link = self.__parse_link(succ_elem, road, "end")
             else:
                 pred_link = succ_link = None
+
+            for type_elem in r.findall("type"):
+                s = float(type_elem.get("s"))
+                road_type = type_elem.get("type")
+                speed_elem = type_elem.find("speed")
+                speed_mps = speed_to_mps(speed_elem) if speed_elem is not None else None
+                road.type_records.append((s, road_type, speed_mps))
 
             if road.length < self.tolerance:
                 warn(
@@ -1718,6 +1936,15 @@ class RoadMap:
 
     def toScenicNetwork(self):
         assert self.intersection_region is not None
+        # Connecting roads inherit semantic tags from their junction type.
+        junction_tags = {jid: junction.tags for jid, junction in self.junctions.items()}
+        for road in self.roads.values():
+            if road.junction is not None:
+                # road.junction is the raw OpenDRIVE id string;
+                # junctions are keyed by int.
+                road.extra_tags = junction_tags.get(int(road.junction), frozenset())
+            else:
+                road.extra_tags = frozenset()
 
         # Prepare registry of network elements
         allElements = {}
