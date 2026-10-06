@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Left-hand traffic one-way corridor with two driving lanes.
+     Per OpenDRIVE LHT, positive lane IDs travel in +s.
+     Lane +1 is nearer the median; lane +2 is nearer the left curb (slower). -->
+<OpenDRIVE>
+  <header revMajor="1" revMinor="6" name="lht_two_lane_oneway" version="1.0" date="2026-07-19"/>
+  <road name="LHT Two Lane Oneway" length="40.0" id="1" junction="-1" rule="LHT">
+    <type s="0" type="town">
+      <speed max="50" unit="km/h"/>
+    </type>
+    <planView>
+      <geometry s="0" x="0" y="0" hdg="0" length="40.0">
+        <line/>
+      </geometry>
+    </planView>
+    <lanes>
+      <laneOffset s="0" a="0" b="0" c="0" d="0"/>
+      <laneSection s="0">
+        <left>
+          <lane id="2" type="driving" level="false">
+            <width sOffset="0" a="3.5" b="0" c="0" d="0"/>
+          </lane>
+          <lane id="1" type="driving" level="false">
+            <width sOffset="0" a="3.5" b="0" c="0" d="0"/>
+          </lane>
+        </left>
+        <center>
+          <lane id="0" type="none" level="false"/>
+        </center>
+      </laneSection>
+    </lanes>
+  </road>
+</OpenDRIVE>

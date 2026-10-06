@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Left-hand traffic one-way with three lanes and explicit per-lane speeds.
+     +1 (median / faster) 80 km/h, +2 (middle) 60 km/h, +3 (curb / slower) 40 km/h. -->
+<OpenDRIVE>
+  <header revMajor="1" revMinor="6" name="lht_three_lane_speeds" version="1.0" date="2026-07-19"/>
+  <road name="LHT Three Lane Speeds" length="50.0" id="2" junction="-1" rule="LHT">
+    <type s="0" type="town">
+      <speed max="60" unit="km/h"/>
+    </type>
+    <planView>
+      <geometry s="0" x="0" y="0" hdg="0" length="50.0">
+        <line/>
+      </geometry>
+    </planView>
+    <lanes>
+      <laneOffset s="0" a="0" b="0" c="0" d="0"/>
+      <laneSection s="0">
+        <left>
+          <lane id="3" type="driving" level="false">
+            <width sOffset="0" a="3.5" b="0" c="0" d="0"/>
+            <speed sOffset="0" max="40" unit="km/h"/>
+          </lane>
+          <lane id="2" type="driving" level="false">
+            <width sOffset="0" a="3.5" b="0" c="0" d="0"/>
+            <speed sOffset="0" max="60" unit="km/h"/>
+          </lane>
+          <lane id="1" type="driving" level="false">
+            <width sOffset="0" a="3.5" b="0" c="0" d="0"/>
+            <speed sOffset="0" max="80" unit="km/h"/>
+          </lane>
+        </left>
+        <center>
+          <lane id="0" type="none" level="false"/>
+        </center>
+      </laneSection>
+    </lanes>
+  </road>
+</OpenDRIVE>
