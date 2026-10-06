@@ -281,6 +281,46 @@ def test_initial_velocity_movement(getMetadriveSimulator):
     assert dx < -0.1, f"Expected car to move west (negative dx), but got dx = {dx}"
 
 
+def test_bicycle_movement(getMetadriveSimulator):
+    simulator, openDrivePath, sumoPath = getMetadriveSimulator("Town01")
+    code = f"""
+        param map = r'{openDrivePath}'
+        param sumo_map = r'{sumoPath}'
+
+        model scenic.simulators.metadrive.model
+
+        behavior RideForward():
+            while True:
+                take SetTravelDirectionAction(self.heading), SetTravelSpeedAction(0.5)
+
+        behavior StopRiding():
+            while True:
+                take SetTravelSpeedAction(0)
+
+        behavior RideThenStop():
+            do RideForward() for 2 steps
+            do StopRiding() for 2 steps
+
+        ego = new Car at (30, 2)
+        bicycle = new Bicycle at (30, -2),
+            # with regionContainedIn None,
+            with behavior RideThenStop
+
+        record bicycle.position as Pos
+        terminate after 4 steps
+    """
+    scenario = compileScenic(code, mode2D=True)
+    scene = sampleScene(scenario)
+    simulation = simulator.simulate(scene)
+    series = simulation.result.records["Pos"]
+
+    # moved at least once
+    assert series[0][1] != series[1][1]
+
+    # after stopping, position should be (approximately) unchanged between last two samples
+    assert series[-1][1] == pytest.approx(series[-2][1], abs=0.05)
+
+
 def test_pedestrian_movement(getMetadriveSimulator):
     simulator, openDrivePath, sumoPath = getMetadriveSimulator("Town01")
     code = f"""

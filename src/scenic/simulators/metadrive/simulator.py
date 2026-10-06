@@ -15,6 +15,7 @@ import time
 
 from metadrive.component.sensors.rgb_camera import RGBCamera
 from metadrive.component.sensors.semantic_camera import SemanticCamera
+from metadrive.component.traffic_participants.cyclist import Cyclist
 from metadrive.component.traffic_participants.pedestrian import Pedestrian
 from metadrive.component.vehicle.vehicle_type import DefaultVehicle
 
@@ -193,7 +194,7 @@ class MetaDriveSimulation(DrivingSimulation):
         Create an object in the MetaDrive simulator.
 
         If it's the first object, it initializes the client and sets it up for the ego car.
-        For additional cars and pedestrians, it spawns objects using the provided position and heading.
+        For additional cars, pedestrians, and bicycles, it spawns objects using the provided position and heading.
         """
         converted_position = utils.scenicToMetaDrivePosition(
             obj.position, self.scenic_offset
@@ -267,6 +268,20 @@ class MetaDriveSimulation(DrivingSimulation):
             metaDriveActor.set_velocity(direction, obj.speed)
             return
 
+        # For Bicycles
+        if obj.isBicycle:
+            metaDriveActor = self.client.engine.agent_manager.spawn_object(
+                Cyclist,
+                position=converted_position,
+                heading_theta=converted_heading,
+            )
+            obj.metaDriveActor = metaDriveActor
+            self._attach_sensors(obj)
+
+            direction = [math.cos(converted_heading), math.sin(converted_heading)]
+            metaDriveActor.set_velocity(direction, obj.speed)
+            return
+
         # If the object type is unsupported, raise an error
         raise SimulationCreationError(
             f"Unsupported object type: {type(obj)} for object {obj}."
@@ -284,16 +299,16 @@ class MetaDriveSimulation(DrivingSimulation):
                 action = obj._prepare_action()
                 obj.metaDriveActor.before_step(action)
             else:
-                # For Pedestrians
-                if obj._walking_direction is None:
-                    obj._walking_direction = utils.scenicToMetaDriveHeading(obj.heading)
-                if obj._walking_speed is None:
-                    obj._walking_speed = obj.speed
+                # For Pedestrians and Bicycles
+                if obj._travel_direction is None:
+                    obj._travel_direction = utils.scenicToMetaDriveHeading(obj.heading)
+                if obj._travel_speed is None:
+                    obj._travel_speed = obj.speed
                 direction = [
-                    math.cos(obj._walking_direction),
-                    math.sin(obj._walking_direction),
+                    math.cos(obj._travel_direction),
+                    math.sin(obj._travel_direction),
                 ]
-                obj.metaDriveActor.set_velocity(direction, obj._walking_speed)
+                obj.metaDriveActor.set_velocity(direction, obj._travel_speed)
 
     def step(self):
         start_time = time.monotonic()

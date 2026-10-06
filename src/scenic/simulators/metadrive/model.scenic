@@ -1,8 +1,8 @@
 """Scenic world model for traffic scenarios in MetaDrive.
 
-The model currently supports vehicles and pedestrians. It implements the
+The model currently supports vehicles, pedestrians, and bicycles. It implements the
 basic :obj:`~scenic.domains.driving.model.Car` and `Pedestrian` classes from the :obj:`scenic.domains.driving` domain.
-Vehicles and pedestrians support the basic actions and behaviors from the driving domain.
+Vehicles, pedestrians, and bicycles support the basic actions and behaviors from the driving domain.
 
 The model defines several global parameters, whose default values can be overridden
 in scenarios using the ``param`` statement or on the command line using the
@@ -118,6 +118,14 @@ class MetaDriveActor(DrivingObject):
     """
     metaDriveActor: None
 
+    @property
+    def isPedestrian(self):
+        return False
+
+    @property
+    def isBicycle(self):
+        return False
+
     def setPosition(self, pos, elevation):
         position = scenicToMetaDrivePosition(pos, simulation().scenic_offset)
         self.metaDriveActor.set_position(position)
@@ -176,15 +184,41 @@ class Car(Vehicle):
 class Pedestrian(Pedestrian, MetaDriveActor, Walks):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self._walking_direction = None
-        self._walking_speed = None
+        self._travel_direction = None
+        self._travel_speed = None
 
     @property
     def isPedestrian(self):
         return True
 
-    def setWalkingDirection(self, heading):
-        self._walking_direction = scenicToMetaDriveHeading(heading)
+    def setTravelDirection(self, heading):
+        self._travel_direction = scenicToMetaDriveHeading(heading)
 
-    def setWalkingSpeed(self, speed):
-        self._walking_speed = speed
+    def setTravelSpeed(self, speed):
+        self._travel_speed = speed
+
+
+class Bicycle(MetaDriveActor, Travels):
+    regionContainedIn: roadOrShoulder
+    position: new Point on roadOrShoulder
+    parentOrientation: roadDirection at self.position
+
+    # match MetaDrive Cyclist defaults
+    width: 0.4
+    length: 1.75
+    height: 1.75
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._travel_direction = None
+        self._travel_speed = None
+
+    @property
+    def isBicycle(self):
+        return True
+
+    def setTravelDirection(self, heading):
+        self._travel_direction = scenicToMetaDriveHeading(heading)
+
+    def setTravelSpeed(self, speed):
+        self._travel_speed = speed
