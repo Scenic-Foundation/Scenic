@@ -9,8 +9,8 @@ To run this file using the Carla simulator:
 
 # N.B. Town07 is not included with CARLA by default; see installation instructions at
 # https://carla.readthedocs.io/en/latest/start_quickstart/#import-additional-assets
-param map = localPath('../../../assets/maps/CARLA/Town07.xodr')
-param carla_map = 'Town07'
+param map = localPath('../../../assets/maps/CARLA/Town10HD_Opt.xodr')
+param carla_map = 'Town10HD_Opt'
 model scenic.simulators.carla.model
 
 

@@ -9,12 +9,12 @@ To run this file using the Carla simulator:
 """
 
 ## SET MAP AND MODEL (i.e. definitions of all referenceable vehicle types, road library, etc)
-param map = localPath('../../../assets/maps/CARLA/Town01.xodr')
-param carla_map = 'Town01'
+param map = localPath('../../../assets/maps/CARLA/Town10HD_Opt.xodr')
+param carla_map = 'Town10HD_Opt'
 model scenic.simulators.carla.model
 
 ## CONSTANTS
-EGO_MODEL = "vehicle.lincoln.mkz_2017"
+EGO_MODEL = "vehicle.nissan.patrol"
 EGO_SPEED = 10
 EGO_BRAKING_THRESHOLD = 12
 
@@ -56,5 +56,5 @@ ego = new Car following roadDirection from leadCar for Range(-15, -10),
         with blueprint EGO_MODEL,
         with behavior EgoBehavior(EGO_SPEED)
 
-require (distance to intersection) > 80
+require (distance to intersection) > 50
 terminate when ego.speed < 0.1 and (distance to obstacle) < 30

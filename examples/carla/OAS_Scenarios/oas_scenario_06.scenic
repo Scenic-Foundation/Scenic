@@ -8,8 +8,8 @@ To run this file using the Carla simulator:
 """
 
 
-param map = localPath('../../../assets/maps/CARLA/Town01.xodr')  # or other CARLA map that definitely works
-param carla_map = 'Town01'
+param map = localPath('../../../assets/maps/CARLA/Town10HD_Opt.xodr')  # or other CARLA map that definitely works
+param carla_map = 'Town10HD_Opt'
 model scenic.domains.driving.model
 
 MAX_BREAK_THRESHOLD = 1

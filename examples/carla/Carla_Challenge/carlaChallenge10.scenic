@@ -9,12 +9,12 @@ To run this file using the Carla simulator:
 """
 
 ## SET MAP AND MODEL (i.e. definitions of all referenceable vehicle types, road library, etc)
-param map = localPath('../../../assets/maps/CARLA/Town05.xodr')
-param carla_map = 'Town05'
+param map = localPath('../../../assets/maps/CARLA/Town10HD_Opt.xodr')
+param carla_map = 'Town10HD_Opt'
 model scenic.simulators.carla.model
 
 ## CONSTANTS
-EGO_MODEL = "vehicle.lincoln.mkz_2017"
+EGO_MODEL = "vehicle.nissan.patrol"
 EGO_SPEED = 10
 SAFETY_DISTANCE = 20
 BRAKE_INTENSITY = 1.0
@@ -35,6 +35,9 @@ behavior EgoBehavior(speed, trajectory):
 # 'network' is the 'class Network' object in roads.py
 
 fourWayIntersection = filter(lambda i: i.is4Way and not i.isSignalized, network.intersections)
+
+if not fourWayIntersection:
+    raise RuntimeError("This map doesn't have any four-way unsignalized intersections.")
 
 # make sure to put '*' to uniformly randomly select from all elements of the list
 intersec = Uniform(*fourWayIntersection)

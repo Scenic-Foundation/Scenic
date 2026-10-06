@@ -13,15 +13,15 @@ To run this file using the Carla simulator:
 # MAP AND MODEL                 #
 #################################
 
-param map = localPath('../../../../assets/maps/CARLA/Town03.xodr')
-param carla_map = 'Town03'
+param map = localPath('../../../../assets/maps/CARLA/Town10HD_Opt.xodr')
+param carla_map = 'Town10HD_Opt'
 model scenic.simulators.carla.model
 
 #################################
 # CONSTANTS                     #
 #################################
 
-MODEL = 'vehicle.lincoln.mkz_2017'
+MODEL = 'vehicle.nissan.patrol'
 
 param EGO_SPEED = VerifaiRange(2, 4)
 

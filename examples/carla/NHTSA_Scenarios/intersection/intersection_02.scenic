@@ -14,26 +14,26 @@ To run this file using the Carla simulator:
 # MAP AND MODEL                 #
 #################################
 
-param map = localPath('../../../../assets/maps/CARLA/Town05.xodr')
-param carla_map = 'Town05'
+param map = localPath('../../../../assets/maps/CARLA/Town10HD_Opt.xodr')
+param carla_map = 'Town10HD_Opt'
 model scenic.simulators.carla.model
 
 #################################
 # CONSTANTS                     #
 #################################
 
-MODEL = 'vehicle.lincoln.mkz_2017'
+MODEL = 'vehicle.nissan.patrol'
 
-EGO_INIT_DIST = [20, 25]
+EGO_INIT_DIST = [10, 15]
 param EGO_SPEED = VerifaiRange(7, 10)
 param EGO_BRAKE = VerifaiRange(0.5, 1.0)
 
-ADV_INIT_DIST = [15, 20]
+ADV_INIT_DIST = [10, 15]
 param ADV_SPEED = VerifaiRange(7, 10)
 
 param SAFETY_DIST = VerifaiRange(10, 20)
 CRASH_DIST = 5
-TERM_DIST = 70
+TERM_DIST = 35
 
 #################################
 # AGENT BEHAVIORS               #

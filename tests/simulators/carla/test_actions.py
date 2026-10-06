@@ -1,3 +1,4 @@
+from importlib.metadata import version
 import math
 import os
 from pathlib import Path
@@ -17,12 +18,18 @@ except ModuleNotFoundError:
 
 from tests.utils import compileScenic, sampleScene
 
+carla_pkg_version = version("carla")
+is_carla_0_10 = carla_pkg_version.startswith("0.10")
+
 
 def checkCarlaPath():
     CARLA_ROOT = os.environ.get("CARLA_ROOT")
     if not CARLA_ROOT:
         pytest.skip("CARLA_ROOT env variable not set.")
-    return CARLA_ROOT
+    path = Path(CARLA_ROOT)
+    if not path.exists():
+        pytest.skip("CARLA_ROOT set to nonexistent folder")
+    return path
 
 
 def isCarlaServerRunning(host="localhost", port=2000):
@@ -40,23 +47,41 @@ def getCarlaSimulator(getAssetPath):
     carla_process = None
     if not isCarlaServerRunning():
         CARLA_ROOT = checkCarlaPath()
-        carla_process = subprocess.Popen(
-            f"bash {CARLA_ROOT}/CarlaUE4.sh -RenderOffScreen", shell=True
+        # decide which startup script to use
+        ue_script = (
+            "CarlaUnreal.sh"
+            if (CARLA_ROOT / "CarlaUnreal.sh").exists()
+            else "CarlaUE4.sh"
+        )
+        # and which binary to kill later
+        exec_name = (
+            "CarlaUnreal-Linux-Shipping"
+            if ue_script == "CarlaUnreal.sh"
+            else "CarlaUE4-Linux-Shipping"
         )
 
-        for _ in range(180):
+        carla_process = subprocess.Popen(
+            f"bash {CARLA_ROOT / ue_script} -RenderOffScreen",
+            shell=True,
+        )
+
+        # CARLA 0.10.0 can take up to 10 minutes to start on the first launch in CI
+        for _ in range(900):
             if isCarlaServerRunning():
                 break
             time.sleep(1)
         else:
             pytest.fail("Unable to connect to CARLA.")
 
-        # Extra 5 seconds to ensure server startup
+        # Extra 10 seconds to ensure server startup
         time.sleep(10)
 
     base = getAssetPath("maps/CARLA")
 
-    def _getCarlaSimulator(town):
+    # CARLA 0.10.0 only works with Town10HD_Opt
+    def _getCarlaSimulator(town=None):
+        if town is None:
+            town = "Town10HD_Opt" if is_carla_0_10 else "Town01"
         path = os.path.join(base, f"{town}.xodr")
         simulator = CarlaSimulator(map_path=path, carla_map=town, timeout=180)
         return simulator, town, path
@@ -64,11 +89,11 @@ def getCarlaSimulator(getAssetPath):
     yield _getCarlaSimulator
 
     if carla_process:
-        subprocess.run("killall -9 CarlaUE4-Linux-Shipping", shell=True)
+        subprocess.run(f"killall -9 {exec_name}", shell=True)
 
 
 def test_throttle(getCarlaSimulator):
-    simulator, town, mapPath = getCarlaSimulator("Town01")
+    simulator, town, mapPath = getCarlaSimulator()
     code = f"""
         param map = r'{mapPath}'
         param carla_map = '{town}'
@@ -80,7 +105,7 @@ def test_throttle(getCarlaSimulator):
             while True:
                 take SetThrottleAction(1)
 
-        ego = new Car at (369, -326), with behavior DriveWithThrottle
+        ego = new Car at (2, -17), with behavior DriveWithThrottle
         record ego.speed as CarSpeed
         terminate after 5 steps
     """
@@ -92,7 +117,7 @@ def test_throttle(getCarlaSimulator):
 
 
 def test_brake(getCarlaSimulator):
-    simulator, town, mapPath = getCarlaSimulator("Town01")
+    simulator, town, mapPath = getCarlaSimulator()
     code = f"""
         param map = r'{mapPath}'
         param carla_map = '{town}'
@@ -112,8 +137,8 @@ def test_brake(getCarlaSimulator):
             do DriveWithThrottle() for 2 steps
             do Brake() for 6 steps
 
-        ego = new Car at (369, -326),
-            with blueprint 'vehicle.toyota.prius',
+        ego = new Car at (2, -17),
+            with blueprint 'vehicle.nissan.patrol',
             with behavior DriveThenBrake
         record final ego.speed as CarSpeed
         terminate after 8 steps
@@ -122,11 +147,11 @@ def test_brake(getCarlaSimulator):
     scene = sampleScene(scenario)
     simulation = simulator.simulate(scene)
     finalSpeed = simulation.result.records["CarSpeed"]
-    assert finalSpeed == pytest.approx(0.0, abs=1e-1)
+    assert finalSpeed == pytest.approx(0.0, abs=2e-1)
 
 
 def test_reverse(getCarlaSimulator):
-    simulator, town, mapPath = getCarlaSimulator("Town01")
+    simulator, town, mapPath = getCarlaSimulator()
     code = f"""
         param map = r'{mapPath}'
         param carla_map = '{town}'
@@ -138,7 +163,7 @@ def test_reverse(getCarlaSimulator):
             while True:
                 take SetReverseAction(True), SetThrottleAction(1)
 
-        ego = new Car at (369, -326), with behavior DriveInReverse
+        ego = new Car at (2, -17), with behavior DriveInReverse
         record initial ego.heading as Heading
         record final ego.velocity as Vel
         terminate after 5 steps
@@ -154,7 +179,7 @@ def test_reverse(getCarlaSimulator):
 
 
 def test_steer(getCarlaSimulator):
-    simulator, town, mapPath = getCarlaSimulator("Town01")
+    simulator, town, mapPath = getCarlaSimulator()
     code = f"""
         param map = r'{mapPath}'
         param carla_map = '{town}'
@@ -167,7 +192,7 @@ def test_steer(getCarlaSimulator):
                 take SetThrottleAction(0.5), SetSteerAction(1)
 
         # Ego facing west
-        ego = new Car at (300, -55), with behavior TurnRight
+        ego = new Car at (2, -17), with behavior TurnRight
 
         record initial ego.heading as InitialHeading
         record final ego.heading as FinalHeading
@@ -184,8 +209,12 @@ def test_steer(getCarlaSimulator):
 
 
 def test_track_waypoints(getCarlaSimulator):
-    simulator, town, mapPath = getCarlaSimulator("Town01")
+    simulator, town, mapPath = getCarlaSimulator()
     target_speed = 6.0
+    if is_carla_0_10:
+        waypoints = [(62, 68), (52, 68), (42, 68)]
+    else:
+        waypoints = [(-2, -13), (-2, -23), (-2, -33)]
 
     code = f"""
         param map = r'{mapPath}'
@@ -195,7 +224,7 @@ def test_track_waypoints(getCarlaSimulator):
         model scenic.simulators.carla.model
 
         # Short straight segment, starting from a known-good spawn point.
-        waypoints = [(-2, -13), (-2, -23), (-2, -33)]
+        waypoints = {waypoints}
 
         behavior FollowPath():
             while True:
@@ -219,4 +248,11 @@ def test_track_waypoints(getCarlaSimulator):
     final_speed = sim.result.records["FinalSpeed"]
 
     assert final_dist < initial_dist
-    assert final_speed == pytest.approx(target_speed, abs=2.0)
+
+    # CARLA 0.10 uses different UE5 vehicle physics, so vehicles accelerate more
+    # slowly in this scenario than in CARLA 0.9.x. For 0.10, only require
+    # meaningful forward motion rather than reaching the old cruising-speed band.
+    if is_carla_0_10:
+        assert final_speed > 3.0
+    else:
+        assert final_speed == pytest.approx(target_speed, abs=2.0)

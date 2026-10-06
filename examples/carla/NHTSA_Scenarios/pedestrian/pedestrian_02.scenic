@@ -13,15 +13,15 @@ To run this file using the Carla simulator:
 # MAP AND MODEL                 #
 #################################
 
-param map = localPath('../../../../assets/maps/CARLA/Town01.xodr')
-param carla_map = 'Town01'
+param map = localPath('../../../../assets/maps/CARLA/Town10HD_Opt.xodr')
+param carla_map = 'Town10HD_Opt'
 model scenic.simulators.carla.model
 
 #################################
 # CONSTANTS                     #
 #################################
 
-MODEL = 'vehicle.lincoln.mkz_2017'
+MODEL = 'vehicle.nissan.patrol'
 
 param EGO_INIT_DIST = VerifaiRange(-30, -20)
 param EGO_SPEED = VerifaiRange(7, 10)
@@ -35,7 +35,7 @@ PED_MIN_SPEED = 1.0
 PED_THRESHOLD = 20
 
 param SAFETY_DIST = VerifaiRange(10, 15)
-BUFFER_DIST = 75
+BUFFER_DIST = 50
 CRASH_DIST = 5
 TERM_DIST = 50
 
@@ -63,8 +63,9 @@ behavior AdvBehavior():
 # SPATIAL RELATIONS             #
 #################################
 
-road = Uniform(*filter(lambda r: len(r.forwardLanes.lanes) == len(r.backwardLanes.lanes) == 1, network.roads))
+road = Uniform(*filter(lambda r: len(r.forwardLanes.lanes) > 0 and len(r.backwardLanes.lanes) > 0, network.roads))
 egoLane = Uniform(road.forwardLanes.lanes)[0]
+advLane = Uniform(*road.backwardLanes.lanes)
 spawnPt = new OrientedPoint on egoLane.centerline
 advSpawnPt = new OrientedPoint following roadDirection from spawnPt for globalParameters.ADV_INIT_DIST
 
@@ -81,14 +82,10 @@ ped = new Pedestrian right of spawnPt by 3,
     with regionContainedIn None,
     with behavior CrossingBehavior(ego, PED_MIN_SPEED, PED_THRESHOLD)
 
-adv = new Car left of advSpawnPt by 3,
+adv = new Car left of advSpawnPt by 7,
     with blueprint MODEL,
     with heading 180 deg relative to spawnPt.heading,
     with behavior AdvBehavior()
 
 require (distance from spawnPt to intersection) > BUFFER_DIST
-require always (ego.laneSection._slowerLane is None)
-require always (ego.laneSection._fasterLane is None)
-require always (adv.laneSection._slowerLane is None)
-require always (adv.laneSection._fasterLane is None)
 terminate when (distance to spawnPt) > TERM_DIST

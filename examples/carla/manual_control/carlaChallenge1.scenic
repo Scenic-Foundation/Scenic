@@ -9,13 +9,13 @@ To run this file using the Carla simulator:
 """
 
 ## SET MAP AND MODEL (i.e. definitions of all referenceable vehicle types, road library, etc)
-param map = localPath('../../../assets/maps/CARLA/Town01.xodr')  # or other CARLA map that definitely works
-param carla_map = 'Town01'
+param map = localPath('../../../assets/maps/CARLA/Town10HD_Opt.xodr')  # or other CARLA map that definitely works
+param carla_map = 'Town10HD_Opt'
 param render = 0
 model scenic.simulators.carla.model
 
 ## CONSTANTS
-EGO_MODEL = "vehicle.lincoln.mkz_2017"
+EGO_MODEL = "vehicle.nissan.patrol"
 EGO_SPEED = 10
 
 ## DEFINING SPATIAL RELATIONS

@@ -5,8 +5,8 @@ Ego-vehicle is performing a right turn at an intersection, yielding to crossing 
 To run this file using the Carla simulator:
     scenic examples/carla/Carla_Challenge/carlaChallenge9.scenic --2d --model scenic.simulators.carla.model --simulate
 """
-param map = localPath('../../../assets/maps/CARLA/Town05.xodr')
-param carla_map = 'Town05'
+param map = localPath('../../../assets/maps/CARLA/Town10HD_Opt.xodr')
+param carla_map = 'Town10HD_Opt'
 model scenic.simulators.carla.model
 
 DELAY_TIME_1 = 1 # the delay time for ego

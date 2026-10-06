@@ -30,7 +30,7 @@ Global Parameters:
         (127.0.0.1).
     port (int): Port on which to connect to CARLA. Default is 2000.
     timeout (float): Maximum time to wait when attempting to connect to CARLA, in
-        seconds. Default is 10.
+        seconds. Default is 60.
 
     render (int): Whether or not to have CARLA create a window showing the
         simulations from the point of view of the ego object: 1 for yes, 0
@@ -80,7 +80,7 @@ map_town = pathlib.Path(globalParameters.map).stem
 param carla_map = map_town
 param address = '127.0.0.1'
 param port = 2000
-param timeout = 10
+param timeout = 60
 param render = 1
 if globalParameters.render not in [0, 1]:
     raise ValueError('render param must be either 0 or 1')
