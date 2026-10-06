@@ -1,7 +1,6 @@
-# Generated from WBT.g4 by ANTLR 4.11.1
+# Generated from WBT.g4 by ANTLR 4.13.1
 from antlr4 import *
-
-if __name__ is not None and "." in __name__:
+if "." in __name__:
     from .WBTParser import WBTParser
 else:
     from WBTParser import WBTParser
@@ -12,6 +11,11 @@ class WBTVisitor(ParseTreeVisitor):
 
     # Visit a parse tree produced by WBTParser#world.
     def visitWorld(self, ctx:WBTParser.WorldContext):
+        return self.visitChildren(ctx)
+
+
+    # Visit a parse tree produced by WBTParser#externproto.
+    def visitExternproto(self, ctx:WBTParser.ExternprotoContext):
         return self.visitChildren(ctx)
 
 

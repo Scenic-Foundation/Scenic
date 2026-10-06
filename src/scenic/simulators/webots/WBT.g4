@@ -11,7 +11,9 @@
 
 grammar WBT;
 
-world : (node | defn)* ;
+world : (externproto | node | defn)* ;
+
+externproto : 'EXTERNPROTO' String Newline+ ;
 
 defn : 'DEF' Identifier node;
 
@@ -44,7 +46,7 @@ vectorWithNewlines: (Newline? Number Newline?)+ ;
 
 boolean : 'TRUE' | 'FALSE' ;
 
-Comment : '#' .*? Newline -> skip ;
+Comment : '#' .*? Newline+ -> skip ;
 
 Whitespace : [ \t]+ -> skip ;
 

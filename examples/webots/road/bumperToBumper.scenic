@@ -1,6 +1,6 @@
 
 from scenic.simulators.webots.road.world import setLocalWorld
-setLocalWorld(__file__, 'southside2.wbt')
+setLocalWorld(__file__, 'berkeley.wbt')
 
 from scenic.simulators.webots.road.model import *
 
@@ -30,12 +30,9 @@ def carAheadOfCar(car, gap, offsetX=0, wiggle=0):
 ego = new Car with visibleDistance 60
 modelDist = modelWithName['ToyotaPrius']
 
-leftCar = carAheadOfCar(ego, laneShift + carGap, offsetX=-laneGap, wiggle=wiggle)
-createPlatoonAt(leftCar, depth, dist=carGap, wiggle=wiggle, model=modelDist)
-
-midCar = carAheadOfCar(ego, resample(carGap), wiggle=wiggle)
-createPlatoonAt(midCar, depth, dist=carGap, wiggle=wiggle, model=modelDist)
-
-rightCar = carAheadOfCar(ego, resample(laneShift) + resample(carGap),
-    offsetX=laneGap, wiggle=wiggle)
-createPlatoonAt(rightCar, depth, dist=carGap, wiggle=wiggle, model=modelDist)
+car1 = carAheadOfCar(ego, laneShift + carGap, offsetX=-laneGap, wiggle=wiggle)
+car2 = carAheadOfCar(ego, 10, wiggle=wiggle)
+car3 = carAheadOfCar(ego, 20, wiggle=wiggle)
+car4 = carAheadOfCar(ego, 30, wiggle=wiggle)
+car5 = carAheadOfCar(ego, 40, wiggle=wiggle)
+car6 = carAheadOfCar(ego, resample(carGap), wiggle=wiggle)
