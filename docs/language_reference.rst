@@ -16,6 +16,7 @@ For details on the syntax for functions, loops, etc. inherited from Python, see 
 
     reference/general
     reference/data
+    reference/coordinates
     reference/region_types
     reference/distributions
     reference/statements

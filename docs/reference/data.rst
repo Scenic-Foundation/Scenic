@@ -63,8 +63,11 @@ Scenic rejects such expressions as being ambiguous: more explicit syntax like :s
 
 Orientation
 ===========
-Orientations represent orientations in 3D space.
-Scenic represents orientations internally using quaternions, though for convenience they can be created using Euler angles. Scenic follows the right hand rule with the Z,X,Y order of rotations. In other words, Euler angles are given as (Yaw, Pitch, Roll), in radians, and applied in that order. To help visualize, one can consider their right hand with fingers extended orthogonally. The index finger points along positive X, the middle finger bends left along positive Y, and the thumb ends up pointing along positive Z. For rotations, align your right thumb with a positive axis and the way your fingers curl is a positive rotation.
+Orientations represent rotations in 3D space. Scenic represents orientations internally using quaternions, though for convenience they can be created using Euler angles. Scenic follows the right hand rule with the Z,X,Y order of rotations. In other words, Euler angles are given as (Yaw, Pitch, Roll), in radians, and applied in that order.
+
+For a more detailed explanation of coordinate systems and rotation composition in Scenic, see the :ref:`coordinates` page.
+
+To help visualize an orientation, consider your right hand with fingers extended orthogonally. The index finger points along the positive X axis, the middle finger along the positive Y axis, and the thumb along the positive Z axis. When you align your right thumb with a positive axis, the way your fingers curl indicates a positive rotation.
 
 .. versionadded:: 3.0
 
