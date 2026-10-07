@@ -33,8 +33,7 @@ def getBugPath(actor, path_ls, backgroundObjects, lookaheadTime, vehBuffer, nonV
         if not obj.isVehicle and getattr(obj, "_planData", None) is not None]
     future_polys = list(filter(lambda p: p is not None, future_polys))
 
-    assert all(p.is_valid for p in raw_obst_polys + future_polys)
-    obst_multi_poly = shapely.union_all(raw_obst_polys + future_polys)
+    obst_multi_poly = shapely.union_all([p.make_valid for p in raw_obst_polys + future_polys])
 
     if isinstance(obst_multi_poly, MultiPolygon):
         obst_polys = obst_multi_poly.geoms
