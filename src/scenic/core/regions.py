@@ -53,6 +53,7 @@ from scenic.core.geometry import (
     plotPolygon,
     pointIsInCone,
     polygonUnion,
+    sectorAABB,
     sin,
     triangulatePolygon,
 )
@@ -3383,6 +3384,10 @@ class SectorRegion(PolygonalRegion):
         t = random.uniform(-ha, ha) + (heading + (math.pi / 2))
         pt = Vector(x + (r * cos(t)), y + (r * sin(t)), z)
         return self.orient(pt)
+
+    @property
+    def AABB(self):
+        return sectorAABB(self.center, self.radius, self.heading, self.angle, self.z)
 
     def __repr__(self):
         return f"SectorRegion({self.center!r},{self.radius!r},{self.heading!r},{self.angle!r})"
