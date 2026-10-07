@@ -99,25 +99,6 @@ def scenicToMetaDrivePosition(vec, scenic_offset):
     return adjusted_x, adjusted_y
 
 
-def scenicToMetaDriveHeading(scenicHeading):
-    """
-    Converts Scenic heading to MetaDrive heading by adding π/2 (90 degrees).
-
-    Scenic's coordinate system has 0 radians pointing North, while MetaDrive uses
-    0 radians pointing East. This function shifts the heading to align with MetaDrive's system.
-    """
-    metadriveHeading = scenicHeading + (math.pi / 2)
-    # Normalize to [-π, π]
-    return (metadriveHeading + math.pi) % (2 * math.pi) - math.pi
-
-
-def metaDriveToScenicHeading(metaDriveHeading):
-    """Converts MetaDrive heading to Scenic heading by subtracting π/2 (90 degrees)."""
-    scenicHeading = metaDriveHeading - (math.pi / 2)
-    # Normalize to [-π, π]
-    return (scenicHeading + math.pi) % (2 * math.pi) - math.pi
-
-
 class DriveEnv(BaseEnv):
     def reward_function(self, agent):
         """Dummy reward function."""

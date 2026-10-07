@@ -27,6 +27,10 @@ from scenic.domains.driving.controllers import (
 from scenic.domains.driving.simulators import DrivingSimulation, DrivingSimulator
 from scenic.simulators.metadrive.sensors import MetaDriveRGBSensor, MetaDriveSSSensor
 import scenic.simulators.metadrive.utils as utils
+from scenic.simulators.utils.coordinates import (
+    rep103ToScenicHeading,
+    scenicToRep103Heading,
+)
 
 
 class MetaDriveSimulator(DrivingSimulator):
@@ -198,7 +202,7 @@ class MetaDriveSimulation(DrivingSimulation):
         converted_position = utils.scenicToMetaDrivePosition(
             obj.position, self.scenic_offset
         )
-        converted_heading = utils.scenicToMetaDriveHeading(obj.heading)
+        converted_heading = scenicToRep103Heading(obj.heading)
 
         vehicle_config = {}
         if obj.isVehicle:
@@ -286,7 +290,7 @@ class MetaDriveSimulation(DrivingSimulation):
             else:
                 # For Pedestrians
                 if obj._walking_direction is None:
-                    obj._walking_direction = utils.scenicToMetaDriveHeading(obj.heading)
+                    obj._walking_direction = scenicToRep103Heading(obj.heading)
                 if obj._walking_speed is None:
                     obj._walking_speed = obj.speed
                 direction = [
@@ -354,7 +358,7 @@ class MetaDriveSimulation(DrivingSimulation):
         md_ang_vel = metaDriveActor.body.getAngularVelocity()
         angularVelocity = Vector(*md_ang_vel)
         angularSpeed = math.hypot(*md_ang_vel)
-        converted_heading = utils.metaDriveToScenicHeading(metaDriveActor.heading_theta)
+        converted_heading = rep103ToScenicHeading(metaDriveActor.heading_theta)
         yaw, pitch, roll = obj.parentOrientation.globalToLocalAngles(
             converted_heading, 0, 0
         )

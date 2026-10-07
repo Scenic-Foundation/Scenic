@@ -44,7 +44,8 @@ from scenic.simulators.metadrive.sensors import MetaDriveSSSensor as SSSensor
 
 try:
     from scenic.simulators.metadrive.simulator import MetaDriveSimulator
-    from scenic.simulators.metadrive.utils import scenicToMetaDriveHeading, scenicToMetaDrivePosition
+    from scenic.simulators.metadrive.utils import scenicToMetaDrivePosition
+    from scenic.simulators.utils.coordinates import scenicToRep103Heading
 except ModuleNotFoundError:
     # for convenience when testing without the metadrive package
     from scenic.core.simulators import SimulatorInterfaceWarning
@@ -184,7 +185,7 @@ class Pedestrian(Pedestrian, MetaDriveActor, Walks):
         return True
 
     def setWalkingDirection(self, heading):
-        self._walking_direction = scenicToMetaDriveHeading(heading)
+        self._walking_direction = scenicToRep103Heading(heading)
 
     def setWalkingSpeed(self, speed):
         self._walking_speed = speed
