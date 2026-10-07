@@ -158,7 +158,7 @@ class ParamCubic(Curve):
         super().__init__(x0, y0, hdg, length)
         self.u_poly = Poly3(au, bu, cu, du)
         self.v_poly = Poly3(av, bv, cv, dv)
-        self.p_range = p_range if p_range else 1
+        self.p_range = p_range
 
     def arclength(self, p):
         d_arc = lambda x: math.hypot(self.u_poly.grad_at(x), self.v_poly.grad_at(x))
@@ -267,12 +267,15 @@ def makeCurve(x0, y0, hdg, length, curve_elem):
             float(curve_elem.get("cV")),
             float(curve_elem.get("dV")),
         )
-        p_range = curve_elem.get("pRange")
-        if p_range and p_range != "normalized":
-            # TODO support arcLength
-            raise NotImplementedError("unsupported pRange for paramPoly3")
-        else:
+        p_range_attr = curve_elem.get("pRange")
+        if p_range_attr == "arcLength":
+            p_range = length
+        elif p_range_attr in (None, "normalized"):
             p_range = 1
+        else:
+            raise NotImplementedError(
+                f"unsupported pRange for paramPoly3: {p_range_attr}"
+            )
         curve = ParamCubic(x0, y0, hdg, length, au, bu, cu, du, av, bv, cv, dv, p_range)
     else:
         raise NotImplementedError(f'unhandled OpenDRIVE geometry type "{curve_elem.tag}"')
