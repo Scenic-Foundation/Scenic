@@ -131,8 +131,12 @@ def getBugPath(actor, path_ls, backgroundObjects, lookaheadTime, vehBuffer, nonV
             else:
                 exterior_segments.sort(key=lambda x: x.length)
             mid_path = exterior_segments[0]
+
             if isinstance(mid_path, LineString):
                 mid_path = shapely.remove_repeated_points(shapely.force_2d(mid_path))
+
+                if mid_path.is_empty:
+                    continue
 
                 # Reverse the mid path if needed.
                 if (ShapelyPoint(mid_path.coords[0]).distance(start_pt) > ShapelyPoint(mid_path.coords[0]).distance(end_pt)):
