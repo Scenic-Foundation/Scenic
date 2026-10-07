@@ -340,7 +340,7 @@ behavior Walk(targetSpeed=None, backwards=None,
         currentPath = currentPath.substring(
             min(currentPath.distanceAlong(
                 toShapely(self.position),
-                normalized=True), 0.99),
+                normalized=True), 0.999),
             1, normalized=True)
 
         ## Expand the path till it is at least of length pathHorizon 
