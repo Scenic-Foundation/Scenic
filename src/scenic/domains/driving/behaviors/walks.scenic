@@ -338,10 +338,10 @@ behavior Walk(targetSpeed=None, backwards=None,
     while True:
         ## Trim the path by removing all points before our current projected position
         currentPath = currentPath.substring(
-            currentPath.distanceAlong(
+            min(currentPath.distanceAlong(
                 toShapely(self.position),
-                normalized=True
-            ), 1, normalized=True)
+                normalized=True), 0.99),
+            1, normalized=True)
 
         ## Expand the path till it is at least of length pathHorizon 
         while currentPath.length < pathHorizon:
