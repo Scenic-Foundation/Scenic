@@ -10,3 +10,10 @@ repos:
     hooks:
       - id: isort
         language_version: python3.14
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.16.1
+    hooks:
+      - id: ruff-check
+        files: ^src/
+        args: [--select, F821, --target-version, py311]

@@ -635,6 +635,12 @@ def test_mesh_polygonal_footprint_intersection():
         assert on_side or on_top_bottom
 
 
+def test_polygonal_footprint_contains_region():
+    big = PolygonalRegion(polygon=shapely.geometry.box(-10, -10, 10, 10)).footprint
+    small = PolygonalRegion(polygon=shapely.geometry.box(-1, -1, 1, 1)).footprint
+    assert big.containsRegion(small)
+
+
 def test_mesh_polygonal_footprints_intersection():
     p1 = shapely.geometry.Polygon([(1, 1), (1, 2), (2, 2), (2, 1)])
     r1 = PolygonalRegion(polygon=p1).footprint

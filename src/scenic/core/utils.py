@@ -110,7 +110,7 @@ def alarm(seconds, handler=None, noNesting=False):
         return
     if handler is None:
         handler = signal.SIG_IGN
-    signal.signal(signal.SIGALRM, handler)
+    oldHandler = signal.signal(signal.SIGALRM, handler)
     if noNesting:
         assert oldHandler is signal.SIG_DFL, "SIGALRM handler already installed"
     length = int(math.ceil(seconds))

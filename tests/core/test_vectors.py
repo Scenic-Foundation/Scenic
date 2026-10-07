@@ -25,6 +25,10 @@ def test_vector_equality():
     assert v == (1, 4)
 
 
+def test_vector_cross():
+    assert Vector(1, 0, 0).cross(Vector(0, 1, 0)) == Vector(0, 0, 1)
+
+
 def test_orientation_equality():
     o1 = Orientation.fromEuler(math.pi, math.pi, math.pi)
     o2 = Orientation.fromEuler(-math.pi, -math.pi, -math.pi)

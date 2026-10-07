@@ -22,7 +22,7 @@ import pathlib
 import pickle
 import struct
 import time
-from typing import FrozenSet, List, Optional, Sequence, Tuple, Union
+from typing import Dict, FrozenSet, List, Optional, Sequence, Tuple, Union
 import weakref
 
 import attr

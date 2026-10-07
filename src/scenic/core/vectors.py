@@ -558,7 +558,7 @@ class Vector(Samplable, collections.abc.Sequence):
     @vectorOperator
     def cross(self, other) -> Vector:
         ax, ay, az = self.x, self.y, self.z
-        bx, by, ba = other.x, other.y, other.z
+        bx, by, bz = other.x, other.y, other.z
 
         cx = ay * bz - az * by
         cy = az * bx - ax * bz
