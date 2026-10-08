@@ -33,7 +33,7 @@ def getBugPath(actor, path_ls, backgroundObjects, lookaheadTime, vehBuffer, nonV
     #     trimmed_path = shapely.ops.substring(planned_path, 0, otherPlannedDist)
     #     return trimmed_path.buffer(bufferCalc(obj) + shapely.minimum_bounding_radius(obj._boundingPolygon))
 
-    def future_poly_helper(obj, dt=0.1):
+    def future_poly_helper(obj, dt=0.05):
         other_path, other_speed = obj._planData
 
         if obj._boundingPolygon.distance(self_pt) > pathDist + 2*(other_speed*lookaheadTime):
