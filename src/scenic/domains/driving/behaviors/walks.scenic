@@ -22,13 +22,29 @@ def getBugPath(actor, path_ls, backgroundObjects, lookaheadTime, vehBuffer, nonV
     # Compute the obstacle polygons, accounting for the plan of objects that have already logged it.
     raw_obst_polys = [obj._boundingPolygon.buffer(bufferCalc(obj))
         for obj in backgroundObjects]
-    def future_poly_helper(obj):
-        planned_path, planned_speed = obj._planData
-        otherPlannedDist = planned_speed*lookaheadTime
-        if obj._boundingPolygon.distance(self_pt) > pathDist + 2*otherPlannedDist:
+
+    # def future_poly_helper(obj):
+    #     planned_path, planned_speed = obj._planData
+    #     otherPlannedDist = planned_speed*lookaheadTime
+    #     if obj._boundingPolygon.distance(self_pt) > pathDist + 2*otherPlannedDist:
+    #         return None
+    #     trimmed_path = shapely.ops.substring(planned_path, 0, otherPlannedDist)
+    #     return trimmed_path.buffer(bufferCalc(obj) + shapely.minimum_bounding_radius(obj._boundingPolygon))
+
+    def future_poly_helper(obj, dt=0.01):
+        other_path, other_speed = obj._planData
+        clearance = bufferCalc(obj) + shapely.minimum_bounding_radius(obj._boundingPolygon)
+
+        conflict_times = [t for t in np.arange(0, lookaheadTime, dt)
+                          if path_ls.interpolate(actor.speed*t).distance(
+                                other_path.interpolate(other_speed*t)
+                            ) < (actor.speed+other_speed)*dt+clearance]
+        if not conflict_times:
             return None
-        trimmed_path = shapely.ops.substring(planned_path, 0, otherPlannedDist)
-        return trimmed_path.buffer(bufferCalc(obj) + shapely.minimum_bounding_radius(obj._boundingPolygon))
+        s0 = other_speed*conflict_times[0]
+        s1 = other_speed*conflict_times[1]
+        return shapely.ops.substring(other_path, s0, s1).buffer(clearance)
+
     future_polys = [future_poly_helper(obj) for obj in backgroundObjects
         if not obj.isVehicle and getattr(obj, "_planData", None) is not None]
     future_polys = list(filter(lambda p: p is not None, future_polys))
