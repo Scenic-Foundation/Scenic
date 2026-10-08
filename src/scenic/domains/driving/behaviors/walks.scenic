@@ -10,10 +10,12 @@ from scenic.core.type_support import toVector
 from scenic.domains.driving.actions import *
 
 ## Pedestrian Behaviors
-def getBugPath(actor, path_ls, backgroundObjects, lookaheadTime, vehBuffer, nonVehBuffer, pathDist):
+def getBugPath(actor, path_ls, backgroundObjects, lookaheadTime, vehBuffer, nonVehBuffer, targetSpeed, replanTime):
     """ Refine a walking path using a Bug algorithm approach."""
     assert isinstance(path_ls, LineString)
     self_pt = shapely.force_2d(ShapelyPoint(actor.position))
+    pathTime = 4*replanTime
+    pathDist = targetSpeed*pathTime
 
     # Lambda to compute buffer const.
     baseBuffer = shapely.minimum_bounding_radius(actor._boundingPolygon)
@@ -39,10 +41,10 @@ def getBugPath(actor, path_ls, backgroundObjects, lookaheadTime, vehBuffer, nonV
 
         clearance = bufferCalc(obj) + shapely.minimum_bounding_radius(obj._boundingPolygon)
 
-        conflict_times = [t for t in np.arange(0, lookaheadTime, dt)
-                          if path_ls.interpolate(actor.speed*t).distance(
+        conflict_times = [t for t in np.arange(0, pathTime, dt)
+                          if path_ls.interpolate(targetSpeed*t).distance(
                                 other_path.interpolate(other_speed*t)
-                            ) < (actor.speed+other_speed)*dt+clearance]
+                            ) < (targetSpeed+other_speed)*dt+clearance]
         if not conflict_times:
             return None
         s0 = other_speed*conflict_times[0]
@@ -241,7 +243,7 @@ behavior WalkPath(path, targetSpeed, *, avoidObstacles=True,
 
         # Modify path to route around objects.
         pathDist = targetSpeed*replanTime*4 # Only path around objects that are reasonably close.
-        path_ls = getBugPath(self, path_ls, background_objects, lookaheadTime, vehBuffer, nonVehBuffer, pathDist)
+        path_ls = getBugPath(self, path_ls, background_objects, lookaheadTime, vehBuffer, nonVehBuffer, targetSpeed, replanTime)
         self._planData = (path_ls, targetSpeed) if path_ls else None
 
         # If path_ls is None, our goal is inside the danger zone and we can't
