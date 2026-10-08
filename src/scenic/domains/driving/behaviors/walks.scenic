@@ -135,7 +135,7 @@ def getBugPath(actor, path_ls, backgroundObjects, lookaheadTime, vehBuffer, nonV
             if isinstance(mid_path, LineString):
                 mid_path = shapely.remove_repeated_points(shapely.force_2d(mid_path))
 
-                if mid_path.is_empty:
+                if mid_path.is_empty or mid_path.length < 0.1:
                     continue
 
                 # Reverse the mid path if needed.
@@ -145,14 +145,7 @@ def getBugPath(actor, path_ls, backgroundObjects, lookaheadTime, vehBuffer, nonV
                 # If the closest point on the mid path is very close, cut start path short
                 # and aim directly for it. This helps avoid backtracking loop.
                 if self_pt.distance(mid_path) < 1:
-                    mid_dist = mid_path.project(self_pt, normalized=True)
-                    try:
-                        mid_path = shapely.ops.substring(mid_path, mid_dist, 1, normalized=True)
-                    except AttributeError as e:
-                        print(mid_path.coords)
-                        print(mid_dist)
-                        print(mid_path.length)
-                        raise
+                    mid_path = shapely.ops.substring(mid_path, mid_path.project(self_pt, normalized=True), 1, normalized=True)
                     start_pt = ShapelyPoint(mid_path.coords[0])
                     start_path = LineString([self_pt, start_pt])
             elif isinstance(mid_path, ShapelyPoint):
