@@ -146,9 +146,13 @@ def getBugPath(actor, path_ls, backgroundObjects, lookaheadTime, vehBuffer, nonV
                 # and aim directly for it. This helps avoid backtracking loop.
                 if self_pt.distance(mid_path) < 1:
                     mid_dist = mid_path.project(self_pt, normalized=True)
-                    if mid_dist == 1:
-                        break
-                    mid_path = shapely.ops.substring(mid_path, mid_dist, 1, normalized=True)
+                    try:
+                        mid_path = shapely.ops.substring(mid_path, mid_dist, 1, normalized=True)
+                    except AttributeError as e:
+                        print(mid_path.coords)
+                        print(mid_dist)
+                        print(mid_path.length)
+                        raise
                     start_pt = ShapelyPoint(mid_path.coords[0])
                     start_path = LineString([self_pt, start_pt])
             elif isinstance(mid_path, ShapelyPoint):
