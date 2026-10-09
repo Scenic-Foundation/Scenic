@@ -10,12 +10,12 @@ from scenic.core.regions import (
     MeshSurfaceRegion,
     MeshVolumeRegion,
     PolygonalRegion,
-    Region,
+    WrapperRegion,
     everywhere,
 )
 
 
-class Workspace(Region):
+class Workspace(WrapperRegion):
     """A :term:`workspace` describing the fixed world of a scenario.
 
     Args:
@@ -26,9 +26,10 @@ class Workspace(Region):
     def __init__(self, region=everywhere):
         if needsSampling(region):
             raise InvalidScenarioError("workspace region must be fixed")
-        super().__init__("workspace", orientation=region.orientation)
+        super().__init__(region)
 
-        self.region = region
+    def show(self, viewer):
+        self.show3D(viewer)
 
     def show3D(self, viewer):
         """Render a schematic of the workspace (in 3D) for debugging"""
@@ -88,48 +89,6 @@ class Workspace(Region):
     def scenicToSchematicCoords(self, coords):
         """Convert Scenic coordinates to those used for schematic rendering."""
         return coords[:2]
-
-    def uniformPointInner(self):
-        return self.region.uniformPointInner()
-
-    def intersect(self, other, triedReversed=False):
-        return self.region.intersect(other, triedReversed)
-
-    def intersects(self, other):
-        return self.region.intersects(other)
-
-    def difference(self, other):
-        return self.region.difference(other)
-
-    def union(self, other, triedReversed=False):
-        return self.region.union(other, triedReversed)
-
-    def containsPoint(self, point):
-        return self.region.containsPoint(point)
-
-    def containsObject(self, obj):
-        return self.region.containsObject(obj)
-
-    def containsRegionInner(self, reg, tolerance):
-        return self.region.containsRegionInner(reg, tolerance)
-
-    def distanceTo(self, point):
-        return self.region.distanceTo(point)
-
-    def projectVector(self, point, onDirection):
-        raise self.region.projectVector(point, onDirection)
-
-    @property
-    def AABB(self):
-        return self.region.AABB
-
-    @property
-    def dimensionality(self):
-        return self.region.dimensionality
-
-    @property
-    def size(self):
-        return self.region.size
 
     def __repr__(self):
         return f"Workspace({self.region!r})"

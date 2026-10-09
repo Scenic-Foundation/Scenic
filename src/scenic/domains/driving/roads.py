@@ -22,7 +22,7 @@ import pathlib
 import pickle
 import struct
 import time
-from typing import FrozenSet, List, Optional, Sequence, Tuple, Union
+from typing import Dict, FrozenSet, List, Optional, Sequence, Tuple, Union
 import weakref
 
 import attr
@@ -36,7 +36,13 @@ from scenic.core.distributions import (
 )
 import scenic.core.geometry as geometry
 from scenic.core.object_types import Point
-from scenic.core.regions import PolygonalRegion, PolylineRegion
+from scenic.core.regions import (
+    EmptyRegion,
+    PolygonalRegion,
+    PolylineRegion,
+    WrapperRegion,
+    nowhere,
+)
 from scenic.core.serialization import deterministicHash
 import scenic.core.type_support as type_support
 import scenic.core.utils as utils
@@ -209,7 +215,7 @@ class Maneuver(_ElementReferencer):
 
 
 @attr.s(auto_attribs=True, kw_only=True, repr=False, eq=False)
-class NetworkElement(_ElementReferencer, PolygonalRegion):
+class NetworkElement(_ElementReferencer, WrapperRegion):
     """NetworkElement()
 
     Abstract class for part of a road network.
@@ -222,9 +228,8 @@ class NetworkElement(_ElementReferencer, PolygonalRegion):
     distances to an element, etc.
     """
 
-    # from PolygonalRegion
-    polygon: Union[Polygon, MultiPolygon]
-    orientation: Optional[VectorField] = None
+    polygon: Optional[Union[Polygon, MultiPolygon]]
+    region: Union[PolygonalRegion, EmptyRegion] = None  #: The region of the element.
 
     name: str = ""  #: Human-readable name, if any.
     #: Unique identifier; from underlying format, if possible.
@@ -247,9 +252,17 @@ class NetworkElement(_ElementReferencer, PolygonalRegion):
         if self.uid is None:
             self.uid = self.id
 
-        super().__init__(
-            polygon=self.polygon, orientation=self.orientation, name=self.name
-        )
+        if self.polygon.is_empty:
+            self.polygon = None
+
+        if self.region is None:
+            if self.polygon:
+                self.region = PolygonalRegion(polygon=self.polygon)
+            else:
+                self.region = nowhere
+
+        WrapperRegion.__init__(self, self.region)
+        _ElementReferencer().__init__()
 
     @distributionFunction
     def nominalDirectionsAt(self, point: Vectorlike) -> Tuple[Orientation]:
@@ -324,8 +337,9 @@ class LinearElement(NetworkElement):
         # Check that left and right edges lie inside the element.
         # (don't check centerline here since it can lie inside a median, for example)
         # (TODO reconsider the decision to have polygon only include drivable areas?)
-        assert self.containsRegion(self.leftEdge, tolerance=0.5)
-        assert self.containsRegion(self.rightEdge, tolerance=0.5)
+        if getattr(self, "polygon", None):
+            assert self.containsRegion(self.leftEdge, tolerance=0.5)
+            assert self.containsRegion(self.rightEdge, tolerance=0.5)
         if self.orientation is None:
             self.orientation = VectorField(self.name, self._defaultHeadingAt)
 
@@ -386,19 +400,26 @@ class _ContainsCenterline:
 class Road(LinearElement):
     """Road()
 
-    A road consisting of one or more lanes.
+    A road consisting of lanes, sidewalks, and/or miscellaneous features.
 
     Lanes are grouped into 1 or 2 instances of `LaneGroup`:
 
         * **forwardLanes**: the lanes going the same direction as the road
         * **backwardLanes**: the lanes going the opposite direction
 
-    One of these may be None if there are no lanes in that direction.
+    Either or both of these may be None if there are no lanes in that direction.
 
     Because of splits and mergers, the Lanes of a `Road` do not necessarily start
     or end at the same point as the `Road`. Such intermediate branching points
     cause the `Road` to be partitioned into multiple road sections, within which
     the configuration of lanes is fixed.
+
+    .. versionchanged:: unreleased
+
+        Roads can now have no lanes, and as a consequence, can also have:
+        - No lane groups
+        - Both forwardLanes and backwardLanes being None
+        - Both the left and right edges being the centerline
     """
 
     #: All lanes of this road, in either direction.
@@ -413,7 +434,7 @@ class Road(LinearElement):
     backwardLanes: Union[LaneGroup, None]  # lanes going the other direction
 
     #: All LaneGroups of this road, with `forwardLanes` being first if it exists.
-    laneGroups: Tuple[LaneGroup] = None
+    laneGroups: Tuple[LaneGroup]
 
     #: All sections of this road, ordered from start to end.
     sections: Tuple[RoadSection]
@@ -421,28 +442,16 @@ class Road(LinearElement):
     signals: Tuple[Signal]
 
     #: All crosswalks of this road, ordered from start to end.
-    crossings: Tuple[PedestrianCrossing] = ()
+    crossings: Tuple[PedestrianCrossing]
 
     #: All sidewalks of this road, with the one adjacent to `forwardLanes` being first.
-    sidewalks: Tuple[Sidewalk] = None
+    sidewalks: Tuple[Sidewalk]
     #: Possibly-empty region consisting of all sidewalks of this road.
     sidewalkRegion: PolygonalRegion = None
 
     def __attrs_post_init__(self):
         super().__attrs_post_init__()
-        lgs = []
-        sidewalks = []
-        if self.forwardLanes:
-            lgs.append(self.forwardLanes)
-            if self.forwardLanes._sidewalk:
-                sidewalks.append(self.forwardLanes._sidewalk)
-        if self.backwardLanes:
-            lgs.append(self.backwardLanes)
-            if self.backwardLanes._sidewalk:
-                sidewalks.append(self.backwardLanes._sidewalk)
-        self.laneGroups = tuple(lgs)
-        self.sidewalks = tuple(sidewalks)
-        self.sidewalkRegion = PolygonalRegion.unionAll(sidewalks)
+        self.sidewalkRegion = PolygonalRegion.unionAll(self.sidewalks)
 
     def _defaultHeadingAt(self, point):
         point = _toVector(point)
@@ -726,6 +735,18 @@ class PedestrianCrossing(_ContainsCenterline, LinearElement):
     startSidewalk: Sidewalk
     endSidewalk: Sidewalk
 
+    @property
+    @utils.cached
+    def conflictingManeuvers(self) -> Tuple[Maneuver]:
+        """Maneuvers whose connecting lanes intersect this crossing."""
+        if not isinstance(self.parent, Intersection):
+            return ()
+        conflicts = []
+        for maneuver in self.parent.maneuvers:
+            if maneuver.connectingLane.centerline.intersects(self.centerline):
+                conflicts.append(maneuver)
+        return tuple(conflicts)
+
 
 @attr.s(auto_attribs=True, kw_only=True, repr=False, eq=False)
 class Shoulder(_ContainsCenterline, LinearElement):
@@ -956,7 +977,12 @@ class Network:
 
         # Build R-tree for faster lookup of roads, etc. at given points
         self._uidForIndex = tuple(self.elements)
-        self._rtree = shapely.STRtree([elem.polygons for elem in self.elements.values()])
+        self._rtree = shapely.STRtree(
+            [
+                elem.polygon if elem.polygon else Polygon()
+                for elem in self.elements.values()
+            ]
+        )
         self._nominalDirElems = self.intersections + self.roads + self.shoulders
         self._topLevelElements = (
             self.intersections + self.roads + self.shoulders + self.sidewalks
@@ -987,7 +1013,7 @@ class Network:
 
         :meta private:
         """
-        return 35
+        return 36
 
     class DigestMismatchError(Exception):
         """Exception raised when loading a cached map not matching the original file."""
@@ -1352,7 +1378,7 @@ class Network:
         self.walkableRegion.show(plt, style="-", color="#00A0FF")
         self.shoulderRegion.show(plt, style="-", color="#606060")
         for road in self.roads:
-            road.show(plt, style="r-")
+            road.region.show(plt, style="r-")
             for lane in road.lanes:  # will loop only over lanes of main roads
                 lane.leftEdge.show(plt, style="r--")
                 lane.rightEdge.show(plt, style="r--")
