@@ -793,7 +793,9 @@ class Road:
                 else:
                     pred = lane.pred  # will correct inter-road links later
                 left, center, right = lane.left_bounds, lane.centerline, lane.right_bounds
-                if id_ > 0:  # backward lane
+                # RHT: negative IDs travel with +s; LHT: positive IDs travel with +s.
+                is_forward = (id_ < 0) == self.drive_on_right
+                if not is_forward:
                     left, center, right = right[::-1], center[::-1], left[::-1]
                     succ, pred = pred, succ
                 section = roadDomain.LaneSection(
@@ -808,7 +810,7 @@ class Road:
                     group=None,
                     road=None,
                     openDriveID=id_,
-                    isForward=id_ < 0,
+                    isForward=is_forward,
                 )
                 section._original_lane = lane
                 laneSections[id_] = section
@@ -832,14 +834,14 @@ class Road:
             for id_, lane in sec.sidewalk_lanes.items():
                 if lane.poly is None:  # skip if we could not generate polygon
                     continue
-                (fss if id_ < 0 else bss)[id_] = lane
+                (fss if (id_ < 0) == self.drive_on_right else bss)[id_] = lane
             forwardSidewalks.append(fss)
             backwardSidewalks.append(bss)
             fss, bss = {}, {}
             for id_, lane in sec.shoulder_lanes.items():
                 if lane.poly is None:
                     continue
-                (fss if id_ < 0 else bss)[id_] = lane
+                (fss if (id_ < 0) == self.drive_on_right else bss)[id_] = lane
             forwardShoulders.append(fss)
             backwardShoulders.append(bss)
 
@@ -1000,12 +1002,11 @@ class Road:
                 rightID = id_ - 1 if id_ < 0 else id_ + 1
                 lane._laneToLeft = lanes.get(leftID)
                 lane._laneToRight = lanes.get(rightID)
-                if self.drive_on_right:
-                    lane._fasterLane = lane._laneToLeft
-                    lane._slowerLane = lane._laneToRight
-                else:
-                    lane._slowerLane = lane._laneToLeft
-                    lane._fasterLane = lane._laneToRight
+                # In LHT, the lane on the right (closest to the reference line)
+                # is the faster lane. In RHT, the lane on the left (furthest from the
+                # reference line) is the faster lane.
+                lane._fasterLane = lane._laneToLeft
+                lane._slowerLane = lane._laneToRight
                 if lane._fasterLane and lane._fasterLane.isForward != lane.isForward:
                     lane._fasterLane = None
                 if lane._slowerLane and lane._slowerLane.isForward != lane.isForward:
@@ -1518,8 +1519,18 @@ class RoadMap:
         # parse roads
         self.elidedRoads = {}
         for r in root.iter("road"):
+            rule = (r.get("rule") or "RHT").upper()
+            if rule not in ("RHT", "LHT"):
+                warn(
+                    f"road {r.get('id')}: unrecognized rule {r.get('rule')!r}; assuming RHT"
+                )
+                rule = "RHT"
             road = Road(
-                r.get("name"), int(r.get("id")), float(r.get("length")), r.get("junction")
+                r.get("name"),
+                int(r.get("id")),
+                float(r.get("length")),
+                r.get("junction"),
+                drive_on_right=(rule == "RHT"),
             )
             link = r.find("link")
             if link is not None:

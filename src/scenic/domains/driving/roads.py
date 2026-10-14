@@ -603,7 +603,7 @@ class RoadSection(LinearElement):
                     continue
                 if i not in self.lanesByOpenDriveID:
                     continue
-                (forward if i < 0 else backward).append(self.lanesByOpenDriveID[i])
+                (forward if self.lanesByOpenDriveID[i].isForward else backward).append(self.lanesByOpenDriveID[i])
             self.forwardLanes = tuple(forward)
             self.backwardLanes = tuple(backward)
             self.lanes = self.forwardLanes + self.backwardLanes
