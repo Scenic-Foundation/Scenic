@@ -337,8 +337,10 @@ class LinearElement(NetworkElement):
     _successor: Union[NetworkElement, None] = None  # going forward
     _predecessor: Union[NetworkElement, None] = None  # going backward
 
-    _successors: Tuple[LinearElement, ...] = ()
-    _predecessors: Tuple[LinearElement, ...] = ()
+    # Every link in that direction. Empty when there are none, so these are
+    # plain attributes: reading them does not reject the way successor does.
+    successors: Tuple[LinearElement, ...] = ()
+    predecessors: Tuple[LinearElement, ...] = ()
 
     @property
     def successor(self):
@@ -348,27 +350,19 @@ class LinearElement(NetworkElement):
     def predecessor(self):
         return _rejectIfNonexistent(self._predecessor, "predecessor")
 
-    @property
-    def successors(self) -> Tuple[LinearElement, ...]:
-        return self._successors
-
-    @property
-    def predecessors(self) -> Tuple[LinearElement, ...]:
-        return self._predecessors
-
     def _addSuccessor(self, element):
         if element is None or type(element) is not type(self):
             return
-        if element in self._successors:
+        if element in self.successors:
             return
-        self._successors += (element,)
+        self.successors += (element,)
 
     def _addPredecessor(self, element):
         if element is None or type(element) is not type(self):
             return
-        if element in self._predecessors:
+        if element in self.predecessors:
             return
-        self._predecessors += (element,)
+        self.predecessors += (element,)
 
     def __attrs_post_init__(self):
         super().__attrs_post_init__()
@@ -1380,7 +1374,7 @@ class Network:
 
         :meta private:
         """
-        return 38
+        return 39
 
     class DigestMismatchError(Exception):
         """Exception raised when loading a cached map not matching the original file."""
