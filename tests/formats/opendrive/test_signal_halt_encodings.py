@@ -463,26 +463,26 @@ def test_signal_lookups_propagate_in_each_elements_travel_order(tmp_path):
     road = road_by_id(network, 1)
     lanes = lanes_by_id(road)
 
-    road_entries, road_s_values = road.signalLookup()
-    assert [entry[1].openDriveID for entry in road_entries] == ["10", "11"]
-    assert road_s_values == [12.0, 28.0]
+    road_lookup = road.signalLookup()
+    assert [entry.signal.openDriveID for entry, _s in road_lookup] == ["10", "11"]
+    assert [s for _entry, s in road_lookup] == [12.0, 28.0]
 
-    forward_entries, forward_s_values = lanes[-1].signalLookup()
-    assert [entry[1].openDriveID for entry in forward_entries] == ["11"]
-    assert forward_s_values == [28.0]
-    assert [entry[1].openDriveID for entry in lanes[-1].signalsAhead(20.1)] == ["11"]
+    forward_lookup = lanes[-1].signalLookup()
+    assert [entry.signal.openDriveID for entry, _s in forward_lookup] == ["11"]
+    assert [s for _entry, s in forward_lookup] == [28.0]
+    assert [entry.signal.openDriveID for entry in lanes[-1].signalsAhead(20.1)] == ["11"]
 
-    backward_entries, backward_s_values = lanes[1].signalLookup()
-    assert [entry[1].openDriveID for entry in backward_entries] == ["10"]
-    assert backward_s_values == [28.0]
-    assert [entry[2] for entry in backward_entries] == [12.0]
-    assert [entry[1].openDriveID for entry in lanes[1].signalsAhead(20.1)] == ["10"]
+    backward_lookup = lanes[1].signalLookup()
+    assert [entry.signal.openDriveID for entry, _s in backward_lookup] == ["10"]
+    assert [s for _entry, s in backward_lookup] == [28.0]
+    assert [entry.roadS for entry, _s in backward_lookup] == [12.0]
+    assert [entry.signal.openDriveID for entry in lanes[1].signalsAhead(20.1)] == ["10"]
 
     for lane in lanes.values():
         assert lane.sections[0].signalLookup() == lane.signalLookup()
-    section_entries, section_s_values = road.sections[0].signalLookup()
-    assert [entry[1].openDriveID for entry in section_entries] == ["10", "11"]
-    assert section_s_values == [12.0, 28.0]
+    section_lookup = road.sections[0].signalLookup()
+    assert [entry.signal.openDriveID for entry, _s in section_lookup] == ["10", "11"]
+    assert [s for _entry, s in section_lookup] == [12.0, 28.0]
 
 
 def test_signal_propagation_filters_sections_and_resolves_boundary(tmp_path):
@@ -492,18 +492,18 @@ def test_signal_propagation_filters_sections_and_resolves_boundary(tmp_path):
 
     forward_sections = lanes[-1].sections
     assert [
-        [entry[1].openDriveID for entry in section.signalLookup()[0]]
+        [entry.signal.openDriveID for entry, _s in section.signalLookup()]
         for section in forward_sections
     ] == [[], ["11"]]
 
     backward_sections = lanes[1].sections
     assert [
-        [entry[1].openDriveID for entry in section.signalLookup()[0]]
+        [entry.signal.openDriveID for entry, _s in section.signalLookup()]
         for section in backward_sections
     ] == [[], ["10"]]
 
     assert [
-        [entry[1].openDriveID for entry in section.signalLookup()[0]]
+        [entry.signal.openDriveID for entry, _s in section.signalLookup()]
         for section in road.sections
     ] == [["10"], ["11"]]
 

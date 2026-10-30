@@ -23,7 +23,7 @@ import pathlib
 import pickle
 import struct
 import time
-from typing import Dict, FrozenSet, List, Optional, Sequence, Tuple, Union
+from typing import Dict, FrozenSet, List, NamedTuple, Optional, Sequence, Tuple, Union
 import warnings
 import weakref
 
@@ -311,6 +311,21 @@ class NetworkElement(_ElementReferencer, PolygonalRegion):
         return s
 
 
+class SignalPlacement(NamedTuple):
+    """A signal positioned along one network element.
+
+    ``localS`` increases from the start of the element's centerline to its end.
+    On a backward lane that is travel order, opposite the parent road's station
+    order. ``roadS`` is the stopping station along the parent road, and ``roadT``
+    is the lateral offset of this element's centerline there (positive to the left).
+    """
+
+    localS: float
+    signal: Signal
+    roadS: float
+    roadT: float
+
+
 @attr.s(auto_attribs=True, kw_only=True, repr=False, eq=False)
 class LinearElement(NetworkElement):
     """LinearElement()
@@ -415,26 +430,16 @@ class LinearElement(NetworkElement):
             _toVector(point), distance, steps=steps, stepSize=stepSize
         )
 
-    # Signal entries are ordered by element-local s, which always increases from
-    # the start of this element's centerline to its end. For backward lanes this
-    # is travel order, the reverse of OpenDRIVE road-s order.
-    SignalEntry = Tuple[
-        float,  # element-local s, used for ordering and bisect
-        "Signal",  # controlling signal
-        float,  # OpenDRIVE road s of the effective stopping position
-        float,  # OpenDRIVE road t at this element's centerline
-    ]
-
-    #: OpenDRIVE road-s interval covered by this element, if known.
+    #: Road-station interval covered by this element, if known.
     _roadSRange: Optional[Tuple[float, float]] = None
-    _signalEntries: Tuple[SignalEntry, ...] = ()
+    _signalEntries: Tuple[SignalPlacement, ...] = ()
     _signalSValues: Tuple[float, ...] = ()
 
-    def signalLookup(self) -> Tuple[Tuple[SignalEntry, float], ...]:
-        """Return ``(entry, local s)`` pairs in increasing local-s order."""
+    def signalLookup(self) -> Tuple[Tuple[SignalPlacement, float], ...]:
+        """Return ``(placement, local s)`` pairs in increasing local-s order."""
         return tuple(zip(self._signalEntries, self._signalSValues))
 
-    def signalsAhead(self, s: float) -> List[SignalEntry]:
+    def signalsAhead(self, s: float) -> List[SignalPlacement]:
         """Return all signals at or after local ``s`` in travel order."""
         index = bisect.bisect_left(self._signalSValues, s)
         return list(self._signalEntries[index:])
@@ -564,7 +569,9 @@ class Road(LinearElement):
                 element_point = element.centerline.project(reference_point)
                 local_s = element._projectS(element_point)
                 road_t = self._lateralOffsetAt(road_s, element_point)
-            pending.setdefault(element, []).append((local_s, signal, road_s, road_t))
+            pending.setdefault(element, []).append(
+                SignalPlacement(local_s, signal, road_s, road_t)
+            )
 
         for signal in self.signals:
             if signal.stoppingS is None:
@@ -599,10 +606,12 @@ class Road(LinearElement):
         for element, entries in pending.items():
             unique = {}
             for entry in entries:
-                unique[(entry[1].uid, entry[2])] = entry
-            ordered = sorted(unique.values(), key=lambda entry: (entry[0], entry[1].uid))
+                unique[(entry.signal.uid, entry.roadS)] = entry
+            ordered = sorted(
+                unique.values(), key=lambda entry: (entry.localS, entry.signal.uid)
+            )
             element._signalEntries = tuple(ordered)
-            element._signalSValues = tuple(entry[0] for entry in ordered)
+            element._signalSValues = tuple(entry.localS for entry in ordered)
 
     def _defaultHeadingAt(self, point):
         point = _toVector(point)
@@ -1374,7 +1383,7 @@ class Network:
 
         :meta private:
         """
-        return 39
+        return 40
 
     class DigestMismatchError(Exception):
         """Exception raised when loading a cached map not matching the original file."""
