@@ -436,9 +436,9 @@ class LinearElement(NetworkElement):
     _signalEntries: Tuple[SignalEntry, ...] = ()
     _signalSValues: Tuple[float, ...] = ()
 
-    def signalLookup(self) -> Tuple[List[SignalEntry], List[float]]:
-        """Return signal entries and their parallel, increasing local-s index."""
-        return list(self._signalEntries), list(self._signalSValues)
+    def signalLookup(self) -> Tuple[Tuple[SignalEntry, float], ...]:
+        """Return ``(entry, local s)`` pairs in increasing local-s order."""
+        return tuple(zip(self._signalEntries, self._signalSValues))
 
     def signalsAhead(self, s: float) -> List[SignalEntry]:
         """Return all signals at or after local ``s`` in travel order."""
