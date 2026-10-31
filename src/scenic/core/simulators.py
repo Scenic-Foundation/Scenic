@@ -796,7 +796,7 @@ class Simulation(abc.ABC):
         """
         diff = None
         if isinstance(expected, numbers.Real):
-            diff = actual - expected
+            diff = abs(actual - expected)
         elif isinstance(expected, Vector):
             diff = (actual - expected).norm()
         elif isinstance(expected, Orientation):

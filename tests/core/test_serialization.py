@@ -458,6 +458,14 @@ class TestSimulationReplay:
         with pytest.raises(DivergenceError):
             sim.replay(scene, replay, maxSteps=5, divergenceTolerance=0.004)
 
+    def test_divergence_scalar(self):
+        sim = DummySimulator().simulate(sampleSceneFrom("ego = new Object"), maxSteps=1)
+        sim.divergenceTolerance = 0.1
+        for actual in (0.95, 1.05):
+            assert not sim.valuesHaveDiverged(None, "speed", 1, actual)
+        for actual in (0.5, 1.5):
+            assert sim.valuesHaveDiverged(None, "speed", 1, actual)
+
     def orientationDivergenceHelper(self, spin, maxSteps=1):
         scene = sampleSceneFrom("ego = new Object")
         sim = OrientationSimulator(spin=spin).simulate(
