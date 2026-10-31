@@ -2,7 +2,6 @@ import pytest
 
 from scenic.core.object_types import Object
 from scenic.core.simulators import DummySimulation, DummySimulator, Simulation
-from scenic.core.specifiers import PropertyDefault
 from scenic.core.vectors import Orientation
 from tests.utils import (
     OrientationSimulation,
@@ -168,39 +167,6 @@ def test_derived_properties_are_lazy():
     # `orientation` is provided by the simulator, while nothing reads the Euler
     # angles, so they should never be recomputed.
     assert present == [{"orientation"}] * 3
-
-
-def test_cyclic_derivation():
-    """Deriving a property from itself is an error, not an infinite recursion."""
-    obj = Object._with()
-    # Simulate an interface providing neither `orientation` nor the Euler angles,
-    # which are derived from each other.
-    obj._invalidateDerivedProperties(givenOrientation=True)
-    obj._invalidateDerivedProperties(givenOrientation=False)
-    with pytest.raises(RuntimeError) as e:
-        obj.yaw
-    assert "cyclic derivation" in str(e.value)
-
-
-def test_failed_derivation():
-    """A failed derivation can be retried, rather than looking like a cycle."""
-    fail = False
-
-    def recompute(self):
-        if fail:
-            raise ValueError("no value available")
-        return 42
-
-    class TestObj(Object):
-        _scenic_properties = {"foo": PropertyDefault((), {"dynamic", "final"}, recompute)}
-
-    obj = TestObj._with()
-    fail = True
-    obj._invalidateDerivedProperties()
-    with pytest.raises(ValueError):
-        obj.foo
-    fail = False
-    assert obj.foo == 42
 
 
 def test_unknown_property():

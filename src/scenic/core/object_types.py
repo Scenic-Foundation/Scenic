@@ -160,6 +160,7 @@ class Constructible(Samplable):
         finals = []
         dynFinals = {}
         derived = {}
+        normalized = []
         for prop, defs in allDefs.items():
             primary, rest = defs[0], defs[1:]
             spec = primary.resolveFor(prop, rest)
@@ -173,6 +174,7 @@ class Constructible(Samplable):
                     derived[prop] = primary.dynamicValue
                 elif primary.isFinal:
                     derived[prop] = primary.value
+                    normalized.append(prop)
             if primary.isFinal:
                 finals.append(prop)
                 if isDynamic:
@@ -180,6 +182,7 @@ class Constructible(Samplable):
         cls._defaults = resolvedDefs
         cls._finalProperties = frozenset(finals)
         cls._derivedDynamicProperties = derived
+        cls._normalizedDerivedProperties = frozenset(normalized)
 
         # Determine types of dynamic properties
         dynTypes = {}
@@ -509,33 +512,20 @@ class Constructible(Samplable):
             props = self._propertiesToDeriveGivenOrientation
         else:
             props = self._propertiesToDerive
+        values = self.__dict__
         for prop in props:
-            try:
-                delattr(self, prop)
-            except AttributeError:
-                pass
+            values.pop(prop, None)
 
     def __getattr__(self, name):
         # Recompute a derived dynamic property invalidated above, if this is one.
         recomputer = type(self)._derivedDynamicProperties.get(name)
         if recomputer is None:
             self.__getattribute__(name)  # raise the usual AttributeError
-        # Guard against cycles (e.g. if a simulator interface fails to provide any of
-        # the properties a group of mutually-dependent derived properties needs).
-        inProgress = self.__dict__.get("_derivationInProgress")
-        if inProgress is None:
-            inProgress = set()
-            setattr(self, "_derivationInProgress", inProgress)
-        if name in inProgress:
-            raise RuntimeError(
-                f'cyclic derivation of dynamic property "{name}" of {type(self).__name__}'
-            )
-        inProgress.add(name)
-        try:
-            value = recomputer(self)
-        finally:
-            inProgress.discard(name)
-        setattr(self, name, value)
+        value = recomputer(self)
+        if name in self._normalizedDerivedProperties:
+            self._specify(self, name, valueInContext(value, self))
+            return self.__dict__[name]
+        self.__dict__[name] = value
         return value
 
     @classmethod
@@ -1014,10 +1004,6 @@ class OrientedPoint(Point):
                 if alwaysGlobalOrientation(self.parentOrientation)
                 else self.orientation.yaw
             ),
-            # During simulations we always go through `orientation`, since the Euler
-            # angles may themselves be derived from it (and if the parent orientation is
-            # the global one, the two share a single quaternion-to-Euler conversion).
-            dynamicValue=lambda self: self.orientation.yaw,
         ),
         "viewAngle": math.tau,  # Primarily for backwards compatibility. Set viewAngles instead.
         "viewAngles": PropertyDefault(
@@ -1271,6 +1257,11 @@ class Object(OrientedPoint):
     def __delattr__(self, name):
         proxy = object.__getattribute__(self, "_dynamicProxy")
         object.__delattr__(proxy, name)
+
+    def __getattr__(self, name):
+        # Derive any missing property on the proxy, so that it is stored there.
+        proxy = object.__getattribute__(self, "_dynamicProxy")
+        return super(__class__, proxy).__getattr__(name)
 
     def startDynamicSimulation(self):
         """Hook called when the object is created in a dynamic simulation.

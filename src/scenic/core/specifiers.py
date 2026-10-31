@@ -89,7 +89,8 @@ class PropertyDefault:
     def __init__(self, requiredProperties, attributes, value, dynamicValue=None):
         self.requiredProperties = set(requiredProperties)
         self.value = value
-        #: Alternative way to compute this property during dynamic simulations.
+        #: Alternative way to compute this property during dynamic simulations, whose
+        #: result is stored as is, skipping the normalization `value` goes through.
         #: If `None`, final properties are recomputed using `value` as usual, and
         #: non-final properties are provided by the simulator.
         self.dynamicValue = dynamicValue

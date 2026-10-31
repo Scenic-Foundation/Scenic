@@ -1,4 +1,5 @@
 import inspect
+import math
 import signal
 import sys
 
@@ -87,6 +88,31 @@ def test_dynamic_final_angle():
     # The simulator reports a pitch of 0.2, but the class overrides it.
     assert result.records["pitch"][1][1] == 0
     assert result.records["yaw"][1][1] == pytest.approx(0.1)
+
+
+def test_dynamic_final_angle_normalized():
+    scene = sampleSceneFrom(
+        """
+        class Rolled:
+            roll[dynamic, final]: 7
+        ego = new Rolled
+        record ego.roll as roll
+        """
+    )
+    result = OrientationSimulator().simulate(scene, maxSteps=1)
+    assert result.records["roll"][1][1] == pytest.approx(7 - math.tau)
+
+
+def test_dynamic_heading_is_yaw():
+    """With Euler angles provided, heading is the yaw even if pitch is out of range."""
+    scene = sampleSceneFrom(
+        """
+        ego = new Object with yaw 0.5, with pitch 3
+        record ego.heading as heading
+        """
+    )
+    result = sampleResultFromScene(scene, maxSteps=1)
+    assert result.records["heading"][1][1] == pytest.approx(0.5)
 
 
 def test_dynamic_cached_property():
