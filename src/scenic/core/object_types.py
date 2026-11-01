@@ -209,8 +209,8 @@ class Constructible(Samplable):
         }
         # Simulators setting `Simulation.providesOrientation` supply `orientation`
         # in place of the Euler angles, which are then derived from it instead.
-        # The angles may be absent: a class can make them final, or have a dynamic
-        # `orientation` and no Euler angles at all (e.g. a subclass of `Point`).
+        # The angles may be absent, if a class has a dynamic `orientation` but no Euler
+        # angles at all (e.g. a subclass of `Point`).
         withOrientation = dict(cls._simulatorProvidedProperties)
         if "orientation" in dynTypes:
             for angle in ("yaw", "pitch", "roll"):

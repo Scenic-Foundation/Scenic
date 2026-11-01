@@ -1,5 +1,4 @@
 import inspect
-import math
 import signal
 import sys
 
@@ -8,6 +7,7 @@ import pytest
 import scenic.core.dynamics as dynamics
 from scenic.core.errors import InvalidScenarioError, ScenicSyntaxError
 from scenic.core.simulators import RejectSimulationException, TerminationType
+from scenic.core.vectors import Vector
 from tests.utils import (
     OrientationSimulator,
     checkErrorLineNumber,
@@ -72,35 +72,17 @@ def test_dynamic_final_property_derived():
         assert result.records["val"][step][1] == pytest.approx(2 * 0.1 * step)
 
 
-def test_dynamic_final_angle():
-    """A class can make an Euler angle final, so the simulator does not provide it."""
+def test_dynamic_final_normalized():
     scene = sampleSceneFrom(
         """
-        class Upright:
-            pitch[dynamic, final]: 0
-            roll[dynamic, final]: 0
-        ego = new Upright
-        record ego.pitch as pitch
-        record ego.yaw as yaw
+        class TestObj:
+            cameraOffset[dynamic, final]: (1, 2, 3)
+        ego = new TestObj
+        record ego.cameraOffset as offset
         """
     )
-    result = OrientationSimulator(spin=0.1).simulate(scene, maxSteps=1)
-    # The simulator reports a pitch of 0.2, but the class overrides it.
-    assert result.records["pitch"][1][1] == 0
-    assert result.records["yaw"][1][1] == pytest.approx(0.1)
-
-
-def test_dynamic_final_angle_normalized():
-    scene = sampleSceneFrom(
-        """
-        class Rolled:
-            roll[dynamic, final]: 7
-        ego = new Rolled
-        record ego.roll as roll
-        """
-    )
-    result = OrientationSimulator().simulate(scene, maxSteps=1)
-    assert result.records["roll"][1][1] == pytest.approx(7 - math.tau)
+    result = sampleResultFromScene(scene, maxSteps=1)
+    assert isinstance(result.records["offset"][1][1], Vector)
 
 
 def test_dynamic_heading_is_yaw():

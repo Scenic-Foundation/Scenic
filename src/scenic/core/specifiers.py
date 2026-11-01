@@ -127,6 +127,10 @@ class PropertyDefault:
                 if prop == "heading":
                     msg += " (perhaps this scenario requires the --2d flag?)"
                 raise InvalidScenarioError(msg)
+            if other.isDynamic and self.isFinal:
+                raise InvalidScenarioError(
+                    f'dynamic property "{prop}" cannot be overridden as final'
+                )
         if self.isAdditive:
             allReqs = self.requiredProperties
             for other in overriddenDefs:
