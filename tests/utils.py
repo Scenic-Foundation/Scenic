@@ -31,12 +31,23 @@ import scenic.syntax.veneer as veneer
 ## Simulators
 
 
-class OrientationSimulation(DummySimulation):
-    """Simulation providing `orientation` instead of the Euler angles.
+class OrientationSimulator(DummySimulator):
+    """Simulator providing `orientation` instead of the Euler angles.
 
     Objects rotate about the yaw axis by **spin** radians per time step, and have
     a constant pitch of 0.2 and roll of 0.3 so that tests can tell the angles apart.
     """
+
+    def __init__(self, spin=0, **kwargs):
+        self.spin = spin
+        super().__init__(**kwargs)
+
+    def createSimulation(self, scene, **kwargs):
+        return OrientationSimulation(scene, spin=self.spin, **kwargs)
+
+
+class OrientationSimulation(DummySimulation):
+    """Minimal `Simulation` subclass for `OrientationSimulator`."""
 
     providesOrientation = True
 
@@ -57,15 +68,6 @@ class OrientationSimulation(DummySimulation):
             if prop not in vals:
                 vals[prop] = None
         return vals
-
-
-class OrientationSimulator(DummySimulator):
-    def __init__(self, spin=0, **kwargs):
-        self.spin = spin
-        super().__init__(**kwargs)
-
-    def createSimulation(self, scene, **kwargs):
-        return OrientationSimulation(scene, spin=self.spin, **kwargs)
 
 
 ## Scene generation utilities
