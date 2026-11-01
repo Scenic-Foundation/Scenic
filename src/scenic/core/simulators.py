@@ -18,6 +18,8 @@ import numbers
 import time
 import types
 
+import numpy
+
 from scenic.core.distributions import RejectionException
 from scenic.core.dynamics import GuardViolation, RejectSimulationException
 from scenic.core.dynamics.actions import Action, _EndScenarioAction, _EndSimulationAction
@@ -31,7 +33,7 @@ from scenic.core.object_types import (
 )
 from scenic.core.requirements import RequirementType
 from scenic.core.serialization import Serializer
-from scenic.core.vectors import Vector
+from scenic.core.vectors import Orientation, Vector
 
 
 class SimulatorInterfaceWarning(UserWarning):
@@ -313,6 +315,17 @@ class Simulation(abc.ABC):
     Raises:
         RejectSimulationException: if a requirement is violated.
     """
+
+    #: Whether `getProperties` provides :prop:`orientation` directly.
+    #:
+    #: Simulator interfaces which can cheaply report an object's orientation as a
+    #: quaternion (or other rotation representation) should set this to `True` and
+    #: return an `Orientation` for the :prop:`orientation` property instead of the
+    #: Euler angles :prop:`yaw`, :prop:`pitch`, and :prop:`roll`. Those angles are
+    #: then derived from :prop:`orientation` only if and when they are actually used,
+    #: avoiding a pair of conversions between quaternions and Euler angles on every
+    #: time step.
+    providesOrientation = False
 
     def __init_subclass__(cls):
         super().__init_subclass__()
@@ -697,7 +710,10 @@ class Simulation(abc.ABC):
         """
         for obj in self.objects:
             # Get latest values of dynamic properties from simulation and assign them
-            dynTypes = obj._simulatorProvidedProperties
+            if self.providesOrientation:
+                dynTypes = obj._simulatorProvidedPropertiesGivenOrientation
+            else:
+                dynTypes = obj._simulatorProvidedProperties
             properties = set(dynTypes)
             values = self.getProperties(obj, properties)
             assert properties == set(values), properties ^ set(values)
@@ -749,8 +765,9 @@ class Simulation(abc.ABC):
                         else:
                             raise DivergenceError(msg)
 
-            # Recompute dynamic final properties
-            obj._recomputeDynamicFinals()
+            # Mark properties derived from the ones we just assigned as stale;
+            # they will be recomputed on demand (see `Constructible.__getattr__`)
+            obj._invalidateDerivedProperties(self.providesOrientation)
 
             # Clear caches to ensure that cached properties like visibleRegion, etc.
             # are recomputed
@@ -779,9 +796,19 @@ class Simulation(abc.ABC):
         """
         diff = None
         if isinstance(expected, numbers.Real):
-            diff = actual - expected
+            diff = abs(actual - expected)
         elif isinstance(expected, Vector):
             diff = (actual - expected).norm()
+        elif isinstance(expected, Orientation):
+            if expected == actual:
+                # Identical orientations; the formula below would report them as
+                # differing by a tiny angle, since rounding error can make the dot
+                # product of a unit quaternion with itself come out just under 1.
+                diff = 0
+            else:
+                # Angle of the rotation taking one orientation to the other.
+                dot = abs(numpy.dot(expected.q, actual.q))
+                diff = 2 * math.acos(min(1, dot))
         if diff:
             return diff > self.divergenceTolerance
         else:
@@ -792,6 +819,12 @@ class Simulation(abc.ABC):
         """Read the values of the given properties of the object from the simulator.
 
         Implemented by subclasses.
+
+        The properties requested are the :term:`dynamic properties` of the object which
+        the simulator is responsible for. Note that the set depends on
+        `providesOrientation`: if it is `True`, ``properties`` contains
+        :prop:`orientation` (whose value must be an `Orientation`) instead of
+        :prop:`yaw`, :prop:`pitch`, and :prop:`roll`.
 
         Args:
             obj (Object): Scenic object in question.

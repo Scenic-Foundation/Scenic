@@ -1,7 +1,6 @@
 """Assorted utility functions."""
 
 import bz2
-import collections
 from contextlib import contextmanager
 import functools
 import itertools
@@ -46,10 +45,10 @@ def cached(oldMethod):
             return value
 
     def clearer(self):
-        try:
-            delattr(self, storageName)
-        except AttributeError:
-            pass
+        self.__dict__.pop(storageName, None)
+
+    # Record where the cached value is stored, for `clearAllCaches`.
+    clearer._scenic_cache_attr = storageName
 
     wrapper._scenic_cache_clearer = clearer
 
@@ -70,7 +69,9 @@ def cached_method(oldMethod):
 
     @functools.wraps(oldMethod)
     def wrapper(self, *args, **kwargs):
-        caches = _methodCaches.get(self, collections.defaultdict(dict))
+        caches = _methodCaches.get(self)
+        if caches is None:
+            caches = _methodCaches[self] = {}
         cachedMethod = caches.get(name)
         if cachedMethod is None:
             cachedMethod = functools.lru_cache(maxsize=None)(oldMethod)
@@ -78,7 +79,9 @@ def cached_method(oldMethod):
         return cachedMethod(self, *args, **kwargs)
 
     def clearer(self):
-        caches = _methodCaches.get(self, collections.defaultdict(dict))
+        caches = _methodCaches.get(self)
+        if caches is None:
+            return
         cachedMethod = caches.get(name)
         if cachedMethod:
             cachedMethod.cache_clear()
@@ -90,6 +93,35 @@ def cached_method(oldMethod):
 
 def cached_property(oldMethod):
     return property(cached(oldMethod))
+
+
+_cachedAttrNames = weakref.WeakKeyDictionary()
+
+
+def clearAllCaches(obj):
+    """Clear all caches of an object created by `cached` and `cached_method`."""
+    cls = type(obj)
+    attrNames = _cachedAttrNames.get(cls)
+    if attrNames is None:
+        attrNames = _cachedAttrNames[cls] = _findCachedAttrNames(cls)
+    values = obj.__dict__
+    # Faster than `pop`, since the caches are almost always empty
+    for name in attrNames:
+        if name in values:
+            del values[name]
+    _methodCaches.pop(obj, None)
+
+
+def _findCachedAttrNames(cls):
+    names = set()
+    for sc in cls.__mro__:
+        for value in sc.__dict__.values():
+            if isinstance(value, property):
+                value = value.fget
+            clearer = getattr(value, "_scenic_cache_clearer", None)
+            if name := getattr(clearer, "_scenic_cache_attr", None):
+                names.add(name)
+    return tuple(names)
 
 
 def argsToString(args, kwargs={}):

@@ -171,6 +171,18 @@ def test_property_final_override():
     assert "property cannot be overridden" in str(excinfo.value)
 
 
+def test_property_dynamic_final_override():
+    with pytest.raises(InvalidScenarioError) as excinfo:
+        compileScenic(
+            """
+                class Upright:
+                    pitch[dynamic, final]: 0
+                ego = new Upright
+            """
+        )
+    assert 'dynamic property "pitch" cannot be overridden as final' in str(excinfo.value)
+
+
 def test_property_final_specifier():
     """Properties marked as `final` cannot be specified"""
     with pytest.raises(SpecifierError) as excinfo:
