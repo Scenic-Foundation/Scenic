@@ -79,7 +79,13 @@ from scenic.core.type_support import (
     toVector,
     underlyingType,
 )
-from scenic.core.utils import DefaultIdentityDict, cached, cached_method, cached_property
+from scenic.core.utils import (
+    DefaultIdentityDict,
+    cached,
+    cached_method,
+    cached_property,
+    clearAllCaches,
+)
 from scenic.core.vectors import (
     Orientation,
     Vector,
@@ -122,29 +128,6 @@ class Constructible(Samplable):
             # This class is being unpickled by value; the pickled class already was
             # transformed by __init_subclass__, so we skip it now.
             return
-
-        # Identify cached properties/methods which will need to be cleared each time
-        # step during dynamic simulations, with overriding definitions taking priority.
-        clearers = {}
-        for sc in cls.__mro__:
-            for attr, value in sc.__dict__.items():
-                if attr in clearers:
-                    continue
-                if isinstance(value, property):
-                    value = value.fget
-                if clearer := getattr(value, "_scenic_cache_clearer", None):
-                    clearers[attr] = clearer
-        # Caches created by `cached` are stored in an attribute, which `_clearCaches`
-        # can delete directly; those from `cached_method` need their clearer called.
-        attrNames, otherClearers = [], []
-        for clearer in clearers.values():
-            attrName = getattr(clearer, "_scenic_cache_attr", None)
-            if attrName is None:
-                otherClearers.append(clearer)
-            else:
-                attrNames.append(attrName)
-        cls._cachedAttrNames = tuple(attrNames)
-        cls._otherCacheClearers = tuple(otherClearers)
 
         # Find all defaults provided by the class or its superclasses
         allDefs = collections.defaultdict(list)
@@ -636,17 +619,7 @@ class Constructible(Samplable):
         return self._withProperties(props, constProps=constProps)
 
     def _clearCaches(self):
-        # This runs for every object on every time step of a dynamic simulation, and
-        # the overwhelming majority of the caches are empty when it does. So rather than
-        # calling each clearer (which would raise and catch an AttributeError for every
-        # absent value), test for the cached attributes directly and delete only those
-        # which are actually present.
-        cache = self.__dict__
-        for name in self._cachedAttrNames:
-            if name in cache:
-                del cache[name]
-        for clearer in self._otherCacheClearers:
-            clearer(self)
+        clearAllCaches(self)
 
     def dumpAsScenicCode(self, stream, skipConstProperties=True):
         stream.write(f"new {self.__class__.__name__}")

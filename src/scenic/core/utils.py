@@ -45,13 +45,9 @@ def cached(oldMethod):
             return value
 
     def clearer(self):
-        try:
-            delattr(self, storageName)
-        except AttributeError:
-            pass
+        self.__dict__.pop(storageName, None)
 
-    # Record where the cached value is stored, so that callers clearing many caches at
-    # once can simply delete the attributes instead of calling each clearer in turn.
+    # Record where the cached value is stored, for `clearAllCaches`.
     clearer._scenic_cache_attr = storageName
 
     wrapper._scenic_cache_clearer = clearer
@@ -97,6 +93,35 @@ def cached_method(oldMethod):
 
 def cached_property(oldMethod):
     return property(cached(oldMethod))
+
+
+_cachedAttrNames = weakref.WeakKeyDictionary()
+
+
+def clearAllCaches(obj):
+    """Clear all caches of an object created by `cached` and `cached_method`."""
+    cls = type(obj)
+    attrNames = _cachedAttrNames.get(cls)
+    if attrNames is None:
+        attrNames = _cachedAttrNames[cls] = _findCachedAttrNames(cls)
+    values = obj.__dict__
+    # Faster than `pop`, since the caches are almost always empty
+    for name in attrNames:
+        if name in values:
+            del values[name]
+    _methodCaches.pop(obj, None)
+
+
+def _findCachedAttrNames(cls):
+    names = set()
+    for sc in cls.__mro__:
+        for value in sc.__dict__.values():
+            if isinstance(value, property):
+                value = value.fget
+            clearer = getattr(value, "_scenic_cache_clearer", None)
+            if name := getattr(clearer, "_scenic_cache_attr", None):
+                names.add(name)
+    return tuple(names)
 
 
 def argsToString(args, kwargs={}):

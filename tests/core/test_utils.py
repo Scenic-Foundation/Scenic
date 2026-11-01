@@ -4,7 +4,14 @@ import numpy
 import pytest
 import trimesh
 
-from scenic.core.utils import cached, cached_method, repairMesh, unifyMesh
+from scenic.core.utils import (
+    cached,
+    cached_method,
+    cached_property,
+    clearAllCaches,
+    repairMesh,
+    unifyMesh,
+)
 
 
 @pytest.mark.slow
@@ -109,9 +116,42 @@ def test_cached():
     assert foo.bar() == 42
     assert calls == 1
     clearer = Foo.bar._scenic_cache_clearer
-    assert getattr(foo, clearer._scenic_cache_attr) == 42
     clearer(foo)
-    assert not hasattr(foo, clearer._scenic_cache_attr)
     clearer(foo)  # clearing an already-empty cache does nothing
     assert foo.bar() == 42
     assert calls == 2
+
+
+def test_clear_all_caches():
+    calls = []
+
+    class Foo:
+        @cached
+        def bar(self):
+            calls.append("bar")
+            return 1
+
+        @cached_property
+        def qux(self):
+            calls.append("qux")
+            return 3
+
+        @cached_method
+        def baz(self, x):
+            calls.append("baz")
+            return x
+
+    def useCaches(obj):
+        obj.bar()
+        obj.qux
+        obj.baz(2)
+
+    foo, other = Foo(), Foo()
+    useCaches(foo)
+    useCaches(other)
+    assert len(calls) == 6
+    clearAllCaches(foo)
+    clearAllCaches(Foo())  # object with no caches at all
+    useCaches(foo)
+    useCaches(other)
+    assert calls[6:] == ["bar", "qux", "baz"]
