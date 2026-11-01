@@ -37,7 +37,7 @@ jobs:
       fail-fast: true
       matrix:
         python-version: ["3.8", "3.9", "3.10", "3.11", "3.12", "3.13", "3.14"]
-        os: [ubuntu-latest, windows-latest, macos-15-intel, macos-latest]
+        os: [ubuntu-24.04, windows-latest, macos-15-intel, macos-latest]
         include:
           # Only run slow tests on the latest version of Python
           - python-version: "3.14"
