@@ -295,6 +295,58 @@ class PointInRegionDistribution(VectorDistribution):
         return f"PointIn({self.region!r})"
 
 
+class WrapperRegion(Region):
+    """A wrapper that forwards all region specific APIs to an inner region attribute."""
+
+    def __init__(self, region):
+        self.region = region
+        super().__init__(
+            self.region.name, self.region, orientation=self.region.orientation
+        )
+
+    def uniformPointInner(self):
+        return self.region.uniformPointInner()
+
+    def intersect(self, other, triedReversed=False):
+        return self.region.intersect(other, triedReversed)
+
+    def intersects(self, other):
+        return self.region.intersects(other)
+
+    def difference(self, other):
+        return self.region.difference(other)
+
+    def union(self, other, triedReversed=False):
+        return self.region.union(other, triedReversed)
+
+    def containsPoint(self, point):
+        return self.region.containsPoint(point)
+
+    def containsObject(self, obj):
+        return self.region.containsObject(obj)
+
+    def containsRegionInner(self, reg, tolerance):
+        return self.region.containsRegionInner(reg, tolerance)
+
+    def distanceTo(self, point):
+        return self.region.distanceTo(point)
+
+    def projectVector(self, point, onDirection):
+        raise self.region.projectVector(point, onDirection)
+
+    @property
+    def AABB(self):
+        return self.region.AABB
+
+    @property
+    def dimensionality(self):
+        return self.region.dimensionality
+
+    @property
+    def size(self):
+        return self.region.size
+
+
 ###################################################################################################
 # Utility Regions and Functions
 ###################################################################################################
@@ -2580,10 +2632,10 @@ class PolygonalFootprintRegion(Region):
     def containsRegionInner(self, reg, tolerance):
         buffered_polygons = self.polygons.buffer(tolerance)
 
-        if isinstance(other, MeshRegion):
+        if isinstance(reg, MeshRegion):
             return buffered_polygons.contains(reg._boundingPolygon)
 
-        if isinstance(other, (PolygonalRegion, PolygonalFootprintRegion)):
+        if isinstance(reg, (PolygonalRegion, PolygonalFootprintRegion)):
             return buffered_polygons.contains(reg.polygons)
 
         raise NotImplementedError
