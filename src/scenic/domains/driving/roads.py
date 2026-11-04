@@ -160,6 +160,9 @@ class SignalTag(enum.Enum):
 
     Meanings are Scenic's, so another map format can reuse the same tags.
     Unrecognized source literals are stored on `Signal.otherTags`.
+
+    `TURN_ON_RED_ALLOWED` and `NO_TURN_ON_RED` are optional. A light may have
+    neither, which leaves turn-on-red unspecified. It must not have both.
     """
 
     STOP = "stop"  #: Come to a complete stop, then proceed only when the way is clear.
@@ -167,8 +170,10 @@ class SignalTag(enum.Enum):
     YIELD = "yield"  #: Give way to conflicting traffic; stop only if needed.
     TRAFFIC_LIGHT = "trafficLight"
     #: Signalized control; whether to proceed depends on the current indication.
-    TURN_ON_RED_ALLOWED = "turnOnRedAllowed"  #: Turning on red is permitted.
-    NO_TURN_ON_RED = "noTurnOnRed"  #: Turning on red is forbidden.
+    TURN_ON_RED_ALLOWED = "turnOnRedAllowed"
+    #: Turning on red is permitted. Optional, and mutually exclusive with `NO_TURN_ON_RED`.
+    NO_TURN_ON_RED = "noTurnOnRed"
+    #: Turning on red is forbidden. Optional; a light may instead have neither tag.
 
 
 @attr.s(auto_attribs=True, kw_only=True, eq=False)
@@ -1041,6 +1046,16 @@ class Signal:
     #: Junction this signal controls, if any.
     intersection: Optional[Intersection] = None
 
+    def __attrs_post_init__(self):
+        if self.hasTag(SignalTag.TURN_ON_RED_ALLOWED) and self.hasTag(
+            SignalTag.NO_TURN_ON_RED
+        ):
+            warnings.warn(
+                f"signal {self.openDriveID} carries both turnOnRedAllowed and "
+                "noTurnOnRed; these tags are mutually exclusive",
+                stacklevel=2,
+            )
+
     @property
     def country(self) -> str:
         """Deprecated country code.
@@ -1204,12 +1219,18 @@ class Signal:
 
     @property
     def isNoTurnOnRed(self) -> bool:
-        """Whether turning on red is forbidden."""
+        """Whether turning on red is forbidden.
+
+        False when the tag is absent. Absence leaves turn-on-red unspecified.
+        """
         return self.hasTag(SignalTag.NO_TURN_ON_RED)
 
     @property
     def isTurnOnRedAllowed(self) -> bool:
-        """Whether turning on red is explicitly permitted."""
+        """Whether turning on red is explicitly permitted.
+
+        False when the tag is absent. Absence is not a prohibition.
+        """
         return self.hasTag(SignalTag.TURN_ON_RED_ALLOWED)
 
 
