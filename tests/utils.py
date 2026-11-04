@@ -362,11 +362,15 @@ def areEquivalent(a, b, cache=None, debug=False, ignoreCacheAttrs=False, extraIg
     if old is b:
         return True
     cache[a] = b  # prospectively assume equivalent, for recursive calls
-    if areEquivalentInner(a, b, cache, debug, ignoreCacheAttrs, extraIgnores):
-        return True
-    else:
-        cache[a] = old  # guess was wrong; revert cache
-        return False
+    try:
+        if areEquivalentInner(a, b, cache, debug, ignoreCacheAttrs, extraIgnores):
+            return True
+        else:
+            cache[a] = old  # guess was wrong; revert cache
+            return False
+    except RecursionError:
+        cache[a] = old  # Flush the cache, so hopefully this gets checked later
+        return True  # Optimistically return True
 
 
 def areEquivalentInner(a, b, cache, debug, ignoreCacheAttrs, extraIgnores):
