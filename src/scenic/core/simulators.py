@@ -255,7 +255,7 @@ class Simulator(abc.ABC):
         except (RejectSimulationException, RejectionException, GuardViolation) as e:
             # This simulation will be thrown out, but attach it to the exception
             # to aid in debugging.
-            e.simulation = self
+            e.simulation = simulation
             raise
         finally:
             simulation.cleanup()
