@@ -8,12 +8,17 @@ try:
 except ImportError as exc:  # pragma: no cover - depends on optional simulator package
     raise unittest.SkipTest("AirSim is not installed") from exc
 
-from scenic.core.simulators import Simulation, SimulationCreationError
+from scenic.core.simulators import (
+    Simulation,
+    SimulationCreationError,
+    SimulatorInterfaceWarning,
+)
 from scenic.core.vectors import Vector
 from scenic.simulators.airsim import utils
 from scenic.simulators.airsim.simulator import (
     CONNECT_TIMEOUT,
     CONTROLLER_STARTUP_TIME,
+    PHYSICS_TICK,
     PX4_DRONE,
     RESET_ANGULAR_SPEED_TOLERANCE,
     RESET_LINEAR_SPEED_TOLERANCE,
@@ -423,6 +428,102 @@ class AirSimSetupTests(unittest.TestCase):
             ],
         )
         coreDestroy.assert_called_once_with()
+
+
+class SteppedClockClient:
+    """Client stub whose simulated clock advances a scripted number of ticks per call."""
+
+    def __init__(self, ticksPerCall, events):
+        self.now = 1_790_000_000_000_000_000
+        self.ticksPerCall = list(ticksPerCall)
+        self.events = events
+
+    def simContinueForTime(self, seconds):
+        self.events.append(("simContinueForTime", seconds))
+        self.now += self.ticksPerCall.pop(0) * 3_000_064
+
+    def getMultirotorState(self, vehicle_name):
+        return Mock(timestamp=self.now)
+
+
+class AirSimStepTests(unittest.TestCase):
+    def makeSimulation(self, ticksPerCall, timestep=0.1):
+        events = []
+        simulation = object.__new__(AirSimSimulation)
+        simulation.client = SteppedClockClient(ticksPerCall, events)
+        simulation.simulator = Mock(timestep=timestep)
+        simulation.startDrones = ["Drone0"]
+        simulation.PX4Drone = None
+        simulation.currentTime = 5
+        return simulation, events
+
+    def test_step_runs_a_fixed_tick_count(self):
+        simulation, events = self.makeSimulation([31, 1, 0, 1])
+
+        simulation.step()
+
+        durations = [seconds for name, seconds in events]
+        self.assertEqual(len(durations), 4)
+        self.assertAlmostEqual(durations[0], 31 * PHYSICS_TICK)
+        for seconds in durations[1:]:
+            self.assertAlmostEqual(seconds, PHYSICS_TICK)
+        self.assertEqual(simulation.client.ticksPerCall, [])
+
+    def test_step_warns_when_airsim_runs_extra_ticks(self):
+        simulation, events = self.makeSimulation([31, 3])
+
+        with self.assertWarnsRegex(
+            SimulatorInterfaceWarning,
+            r"At time step 5, AirSim ran 34 physics ticks instead of 33, so the step "
+            r"lasted 0\.102 s of simulated time instead of 0\.099 s",
+        ):
+            simulation.step()
+
+    def test_step_with_px4_continues_for_the_timestep(self):
+        client = Mock()
+        simulation = object.__new__(AirSimSimulation)
+        simulation.client = client
+        simulation.simulator = Mock(timestep=0.1)
+        simulation.PX4Drone = PX4_DRONE
+
+        simulation.step()
+
+        client.simContinueForTime.assert_called_once_with(0.1)
+
+    def test_step_of_at_most_two_ticks_makes_only_single_tick_calls(self):
+        """Check that a step of one or two ticks makes no non-positive simContinueForTime call."""
+        for timestep, targetTicks in ((0.003, 1), (0.006, 2)):
+            with self.subTest(timestep=timestep):
+                simulation, events = self.makeSimulation([1] * targetTicks, timestep)
+
+                simulation.step()
+
+                durations = [seconds for name, seconds in events]
+                self.assertEqual(len(durations), targetTicks)
+                for seconds in durations:
+                    self.assertAlmostEqual(seconds, PHYSICS_TICK)
+
+    def test_step_without_simpleflight_vehicle_continues_for_the_timestep(self):
+        client = Mock()
+        simulation = object.__new__(AirSimSimulation)
+        simulation.client = client
+        simulation.simulator = Mock(timestep=0.1)
+        simulation.startDrones = []
+        simulation.PX4Drone = None
+
+        simulation.step()
+
+        client.simContinueForTime.assert_called_once_with(0.1)
+
+    def test_simulator_rejects_timestep_that_rounds_to_zero_ticks(self):
+        for timestep in (0.001, 0, -0.1):
+            with self.subTest(timestep=timestep):
+                with patch.object(airsim, "MultirotorClient") as clientClass:
+                    with self.assertRaisesRegex(
+                        ValueError, r"^timestep must be at least 0\.0015 s$"
+                    ):
+                        AirSimSimulator(timestep)
+                clientClass.assert_not_called()
 
 
 class AirSimConnectionTests(unittest.TestCase):

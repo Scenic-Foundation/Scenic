@@ -117,6 +117,18 @@ The bridge also validates the physical pose after placement. If AirSim does not
 accept a drone's initial pose, simulation creation fails instead of silently
 starting a trace from the wrong geometry.
 
+## Simulation steps
+
+Each Scenic time step advances AirSim by `round(timestep / 0.003)` physics
+ticks of 3 ms, so a step lasts a whole number of ticks: with the default
+`timestep` of 1 s, each step is 333 ticks, about 0.999 s of simulated time.
+Scenic issues a `SimulatorInterfaceWarning` if AirSim runs extra ticks in a
+step. The `timestep` must be at least 1.5 ms.
+
+With a `PX4Drone`, or with no SimpleFlight vehicle in the AirSim settings, each
+step instead calls `simContinueForTime(timestep)`, which can run a varying
+number of ticks.
+
 ## Starting a drone already in motion
 
 An AirSim pose carries no velocity, so a drone normally comes into existence

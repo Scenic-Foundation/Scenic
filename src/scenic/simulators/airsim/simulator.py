@@ -8,6 +8,7 @@ import socket
 import subprocess
 import threading
 import time
+import warnings
 
 # third party libs
 import airsim
@@ -43,6 +44,10 @@ PX4_DRONE = "PX4Drone"
 # physics or become part of the Scenic trace.
 CONTROLLER_STARTUP_TIME = 0.1
 
+# Nominal length of an AirSim physics tick, the 3 ms period of AirSim's physics loop. Each
+# tick advances AirSim's clock by 3,000,064 ns.
+PHYSICS_TICK = 0.003
+
 # Port of AirSim's RPC server, and seconds to wait for a TCP connection to it.
 AIRSIM_RPC_PORT = 41451
 CONNECT_TIMEOUT = 10
@@ -56,6 +61,9 @@ RESET_ANGULAR_SPEED_TOLERANCE = 0.05
 
 class AirSimSimulator(Simulator):
     def __init__(self, timestep, idleStoragePos=(0, 0, 0)):
+        if round(timestep / PHYSICS_TICK) < 1:
+            raise ValueError(f"timestep must be at least {PHYSICS_TICK / 2} s")
+
         # AIRSIM_HOST selects a simulator on another host, e.g. from a container.
         envHost = os.environ.get("AIRSIM_HOST")
         host = envHost or "127.0.0.1"
@@ -440,7 +448,33 @@ class AirSimSimulation(Simulation):
             raise RuntimeError("object blueprint does not exist", obj.blueprint)
 
     def step(self):
-        self.client.simContinueForTime(self.simulator.timestep)
+        # AirSim's clock is read from a SimpleFlight vehicle. With a PX4 drone, or
+        # without a SimpleFlight vehicle, the step continues for the timestep.
+        if self.PX4Drone or not self.startDrones:
+            self.client.simContinueForTime(self.simulator.timestep)
+            return
+
+        # Advance a fixed number of physics ticks, counted on AirSim's simulated
+        # clock. simContinueForTime is timed on the wall clock and normally runs at
+        # most k ticks for PHYSICS_TICK * k, so the first call asks for
+        # targetTicks - 2, when that is positive, and single-tick calls make up the
+        # rest. A step that runs extra ticks is reported as a warning.
+        targetTicks = round(self.simulator.timestep / PHYSICS_TICK)
+        vehicle = self.startDrones[0]
+        clock = lambda: self.client.getMultirotorState(vehicle_name=vehicle).timestamp
+        start = clock()
+        if targetTicks > 2:
+            self.client.simContinueForTime(PHYSICS_TICK * (targetTicks - 2))
+        while (ticks := round((clock() - start) / 1e9 / PHYSICS_TICK)) < targetTicks:
+            self.client.simContinueForTime(PHYSICS_TICK)
+        if ticks > targetTicks:
+            warnings.warn(
+                f"At time step {self.currentTime}, AirSim ran {ticks} physics ticks "
+                f"instead of {targetTicks}, so the step lasted "
+                f"{ticks * PHYSICS_TICK:.3f} s of simulated time instead of "
+                f"{targetTicks * PHYSICS_TICK:.3f} s",
+                SimulatorInterfaceWarning,
+            )
 
     # ------------------- Other Simulator methods -------------------
 
