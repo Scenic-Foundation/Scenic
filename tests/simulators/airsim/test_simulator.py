@@ -1,3 +1,5 @@
+import os
+import socket
 import unittest
 from unittest.mock import Mock, call, patch
 
@@ -10,11 +12,13 @@ from scenic.core.simulators import Simulation, SimulationCreationError
 from scenic.core.vectors import Vector
 from scenic.simulators.airsim import utils
 from scenic.simulators.airsim.simulator import (
+    CONNECT_TIMEOUT,
     CONTROLLER_STARTUP_TIME,
     PX4_DRONE,
     RESET_ANGULAR_SPEED_TOLERANCE,
     RESET_LINEAR_SPEED_TOLERANCE,
     AirSimSimulation,
+    AirSimSimulator,
 )
 
 
@@ -419,3 +423,52 @@ class AirSimSetupTests(unittest.TestCase):
             ],
         )
         coreDestroy.assert_called_once_with()
+
+
+class AirSimConnectionTests(unittest.TestCase):
+    def test_unreachable_airsim_names_the_address_and_airsim_host(self):
+        refused = ConnectionRefusedError(111, "Connection refused")
+        cases = (
+            (
+                {},
+                r"127\.0\.0\.1:41451",
+                r"Start AirSim before running Scenic, or set AIRSIM_HOST to the "
+                r"address of the machine running AirSim\.",
+            ),
+            (
+                {"AIRSIM_HOST": "10.0.0.5"},
+                r"10\.0\.0\.5:41451 \(from AIRSIM_HOST\)",
+                r"Check that AirSim is running there and that AIRSIM_HOST is correct\.",
+            ),
+        )
+        for environ, address, advice in cases:
+            with self.subTest(environ=environ):
+                with patch.dict(os.environ, environ), patch.object(
+                    socket, "create_connection", side_effect=refused
+                ) as connect, patch.object(airsim, "MultirotorClient") as clientClass:
+                    if not environ:
+                        os.environ.pop("AIRSIM_HOST", None)
+                    with self.assertRaisesRegex(
+                        RuntimeError,
+                        rf"Could not connect to AirSim at {address}: "
+                        rf"\[Errno 111\] Connection refused\. {advice}$",
+                    ) as raised:
+                        AirSimSimulator(0.1)
+                self.assertIs(raised.exception.__cause__, refused)
+                self.assertEqual(connect.call_args.args[1], CONNECT_TIMEOUT)
+                clientClass.assert_not_called()
+
+    def test_failed_rpc_after_connecting_names_the_address_and_error(self):
+        error = OSError("stream closed")
+        with patch.dict(os.environ, {"AIRSIM_HOST": "10.0.0.5"}), patch.object(
+            socket, "create_connection"
+        ), patch.object(airsim, "MultirotorClient") as clientClass:
+            clientClass.return_value.confirmConnection.side_effect = error
+            with self.assertRaisesRegex(
+                RuntimeError,
+                r"Connected to AirSim at 10\.0\.0\.5:41451 \(from AIRSIM_HOST\), "
+                r"but an RPC call failed: OSError\('stream closed'\)",
+            ) as raised:
+                AirSimSimulator(0.1)
+        self.assertIs(raised.exception.__cause__, error)
+        clientClass.assert_called_once_with(ip="10.0.0.5", port=41451)

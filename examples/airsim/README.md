@@ -59,6 +59,10 @@ desktop. They can be adjusted for the available display and hardware.
 Run AirSim from a graphical desktop session and leave it open while Scenic is
 running.
 
+Scenic connects to AirSim at `127.0.0.1` on AirSim's RPC port, 41451. To
+connect to AirSim at another address, for example from a container or another
+machine, set the environment variable `AIRSIM_HOST` to that address.
+
 ## Generate world information
 
 The Scenic AirSim model requires information about the objects and assets in

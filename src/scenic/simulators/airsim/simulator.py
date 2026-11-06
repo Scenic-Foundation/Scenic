@@ -3,6 +3,8 @@ import asyncio
 from cmath import atan, pi, tan
 import math
 from math import copysign, degrees, radians, sin
+import os
+import socket
 import subprocess
 import threading
 import time
@@ -41,6 +43,10 @@ PX4_DRONE = "PX4Drone"
 # physics or become part of the Scenic trace.
 CONTROLLER_STARTUP_TIME = 0.1
 
+# Port of AirSim's RPC server, and seconds to wait for a TCP connection to it.
+AIRSIM_RPC_PORT = 41451
+CONNECT_TIMEOUT = 10
+
 # A successful AirSim reset should leave SimpleFlight vehicles stationary.
 # Allow a small numerical tolerance, but reject any meaningful residual motion
 # before it can enter a Scenic trace.
@@ -50,13 +56,32 @@ RESET_ANGULAR_SPEED_TOLERANCE = 0.05
 
 class AirSimSimulator(Simulator):
     def __init__(self, timestep, idleStoragePos=(0, 0, 0)):
-        # start airsim client
+        # AIRSIM_HOST selects a simulator on another host, e.g. from a container.
+        envHost = os.environ.get("AIRSIM_HOST")
+        host = envHost or "127.0.0.1"
+        address = f"{host}:{AIRSIM_RPC_PORT}"
+        if envHost:
+            address += " (from AIRSIM_HOST)"
+            advice = "Check that AirSim is running there and that AIRSIM_HOST is correct."
+        else:
+            advice = (
+                "Start AirSim before running Scenic, or set AIRSIM_HOST to the "
+                "address of the machine running AirSim."
+            )
         try:
-            client = airsim.MultirotorClient()
+            socket.create_connection((host, AIRSIM_RPC_PORT), CONNECT_TIMEOUT).close()
+        except OSError as exc:
+            raise RuntimeError(
+                f"Could not connect to AirSim at {address}: {exc}. {advice}"
+            ) from exc
+        try:
+            client = airsim.MultirotorClient(ip=host, port=AIRSIM_RPC_PORT)
             client.confirmConnection()
             client.simPause(True)
-        except Exception:
-            raise RuntimeError("Airsim must be running on before executing scenic")
+        except Exception as exc:
+            raise RuntimeError(
+                f"Connected to AirSim at {address}, but an RPC call failed: {exc!r}"
+            ) from exc
 
         # init properties
         self.client = client
