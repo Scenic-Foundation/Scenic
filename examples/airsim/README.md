@@ -3,8 +3,8 @@
 This directory contains a minimal Scenic example for controlling a drone in
 [Microsoft AirSim](https://github.com/microsoft/AirSim).
 
-The example has been tested with AirSim 1.8.1 on Ubuntu 22.04. AirSim requires
-a graphical environment and is not supported on macOS.
+The example has been tested with AirSim 1.8.1 on Ubuntu 22.04. AirSim is not
+supported on macOS.
 
 ## Install the Python dependencies
 
@@ -41,8 +41,19 @@ python -m pip check
 
 ## Start AirSim
 
-Download or build an AirSim environment. For example, launch the AirSim 1.8.1
-Blocks environment with the settings included in this directory:
+Download or build an AirSim environment. For example, download and unpack the
+AirSim 1.8.1 Blocks environment for Linux (143 MB). The SHA-256 of `Blocks.zip`
+is `563e1da1b5d7303b9405c8736243ea92ab0a011b96a561f26f17563d105a404f`.
+
+```bash
+wget https://github.com/microsoft/AirSim/releases/download/v1.8.1/Blocks.zip
+sha256sum Blocks.zip
+unzip Blocks.zip
+chmod +x LinuxBlocks1.8.1/LinuxNoEditor/Blocks.sh \
+  LinuxBlocks1.8.1/LinuxNoEditor/Blocks/Binaries/Linux/Blocks
+```
+
+Launch Blocks with the settings included in this directory:
 
 ```bash
 /path/to/Blocks.sh \
@@ -56,8 +67,17 @@ Blocks environment with the settings included in this directory:
 These window settings are conservative defaults that work well on a remote
 desktop. They can be adjusted for the available display and hardware.
 
-Run AirSim from a graphical desktop session and leave it open while Scenic is
-running.
+Without a desktop session, replace `-windowed -ResX=640 -ResY=480` with
+`-RenderOffscreen`, which renders without a window. Blocks renders with Vulkan.
+On Ubuntu with Intel or AMD graphics, install Mesa's drivers with
+`sudo apt install mesa-vulkan-drivers`. With an NVIDIA GPU, use NVIDIA's
+driver. Without a graphics device, also add `-nullrhi`, which disables
+rendering. Scenic's AirSim interface does not read camera images, so it does
+not need rendering.
+
+Leave AirSim running while Scenic is running. A Blocks process that has been
+running for a long time can develop an altitude jump on the first step of each
+scene, so restart Blocks before long runs.
 
 Scenic connects to AirSim at `127.0.0.1` on AirSim's RPC port, 41451. To
 connect to AirSim at another address, for example from a container or another
