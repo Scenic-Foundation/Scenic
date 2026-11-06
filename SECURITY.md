@@ -15,7 +15,7 @@ Please **do not** report security vulnerabilities through public GitHub issues o
 
 ### How to Report
 
-- **Preferred:** Use [GitHub's private vulnerability reporting](https://github.com/BerkeleyLearnVerify/Scenic/security/advisories/new) through the **Security** tab of this repository.
+- **Preferred:** Use [GitHub's private vulnerability reporting](https://github.com/Scenic-Foundation/Scenic/security/advisories/new) through the **Security** tab of this repository.
 - **Alternative:** Email [security@forum.scenic-lang.org](mailto:security@forum.scenic-lang.org) with the subject line `SECURITY: <short description>`.
 
 ### What to Include

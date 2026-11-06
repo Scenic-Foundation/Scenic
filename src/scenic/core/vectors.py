@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import collections
 import functools
+import importlib.metadata
 import itertools
 import math
 from math import cos, sin
@@ -400,7 +401,8 @@ class Orientation:
         return cls(rotation)
 
 
-if sys.version_info >= (3, 11):
+_scipyVer = tuple(int(n) for n in importlib.metadata.version("scipy").split(".")[:2])
+if _scipyVer >= (1, 17):
 
     def _getEulerAngles(rotation, axes, degrees=False):
         return rotation.as_euler(axes, degrees=degrees, suppress_warnings=True)

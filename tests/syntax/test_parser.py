@@ -6,7 +6,7 @@ from typing import Any
 
 import pytest
 
-from scenic.core.errors import ScenicSyntaxError
+from scenic.core.errors import ScenicParseError, ScenicSyntaxError
 from scenic.syntax.ast import *
 from scenic.syntax.parser import parse_string
 
@@ -2337,6 +2337,33 @@ class TestOperator:
             case _:
                 assert False
 
+    def test_min_distance_to(self):
+        mod = parse_string_helper("minimum distance to x")
+        stmt = mod.body[0]
+        match stmt:
+            case Expr(MinDistanceFromOp(Name("x"), None)):
+                assert True
+            case _:
+                assert False
+
+    def test_min_distance_from_to(self):
+        mod = parse_string_helper("minimum distance from x to y")
+        stmt = mod.body[0]
+        match stmt:
+            case Expr(MinDistanceFromOp(Name("x"), Name("y"))):
+                assert True
+            case _:
+                assert False
+
+    def test_min_distance_to_from(self):
+        mod = parse_string_helper("minimum distance to x from y")
+        stmt = mod.body[0]
+        match stmt:
+            case Expr(MinDistanceFromOp(Name("x"), Name("y"))):
+                assert True
+            case _:
+                assert False
+
     @pytest.mark.parametrize(
         "code,expected",
         [
@@ -3013,3 +3040,20 @@ class TestOperator:
                 assert True
             case _:
                 assert False
+
+
+def test_fstring_conversion_specifiers():
+    for conv_char, expected in [("r", ord("r")), ("s", ord("s")), ("a", ord("a"))]:
+        mod = parse_string_helper(
+            f"""
+            x = 3
+            param y = f"{{x!{conv_char}}}"
+            """
+        )
+        joined = mod.body[1].elts[0].value
+        assert joined.values[0].conversion == expected
+
+
+def test_fstring_invalid_conversion_specifier():
+    with pytest.raises(ScenicParseError, match="invalid conversion character"):
+        parse_string_helper('y = f"{x!z}"')

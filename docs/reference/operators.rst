@@ -33,7 +33,20 @@ The apparent heading of the OrientedPoint, with respect to the line of sight fro
 
 distance [from *vector*] to *vector*
 -------------------------------------
-The distance to the given position from ego (or the position provided with the optional from vector)
+The distance to the given position from ego (or the position provided with the optional from vector).
+
+.. note::
+	When this operator is passed objects, it treats them as vectors and considers only their positions. If you want to compute the actual distance between the occupied space of two objects, you should use the :ref:`minimum distance from` operator.
+
+
+.. _minimum distance [from {Object}] to {Object}:
+.. _minimum distance from:
+
+minimum distance [from *Object*] to *Object*
+--------------------------------------------
+The minimum distance to the given Object from ego (or the Object provided with the optional :scenic:`from {Object}`). Unlike :ref:`distance from`, which computes the distance between the :prop:`position` of the objects, this operator takes into account the objects' :prop:`shape` and dimensions.
+
+.. versionadded:: unreleased
 
 .. _angle [from {vector}] to {vector}:
 

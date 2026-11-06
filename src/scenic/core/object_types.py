@@ -1169,6 +1169,20 @@ class Object(OrientedPoint):
         return self.occupiedSpace.distanceTo(point)
 
     @cached_method
+    def minimumDistanceTo(self, other):
+        """The minimal distance between this object and another."""
+        if not isinstance(other, Object):
+            raise TypeError(
+                f"Cannot compute minimum distance between Object and {type(other)} "
+            )
+
+        # 2D fast path
+        if self._isPlanarBox and other._isPlanarBox and self.z == other.z:
+            return self._boundingPolygon.distance(other._boundingPolygon)
+
+        return self.occupiedSpace.minimumDistanceTo(other.occupiedSpace)
+
+    @cached_method
     def intersects(self, other):
         """Whether or not this object intersects another object or region"""
         ## Type Checking ##

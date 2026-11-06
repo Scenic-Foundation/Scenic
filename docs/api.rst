@@ -173,6 +173,17 @@ it to the replay, but this greatly increases the size of the encoded simulation.
 	can return to one later for further analysis), but it is not guaranteed to be
 	compatible across major versions of Scenic.
 
+.. _xosc_export:
+
+OpenScenarioXML Export
+----------------------
+
+Scenic provides experimental support for exporting completed simulations via `toOpenScenario`.
+This function currently only supports cars and pedestrians, and may be subject to breaking changes
+in the future.
+
+.. versionadded:: unreleased
+
 .. seealso:: If you get exceptions or unexpected behavior when using the API, Scenic provides various debugging features: see :ref:`debugging`.
 
 .. rubric:: Footnotes

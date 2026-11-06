@@ -15,6 +15,20 @@ It also features a new parser enabling clearer error messages, greater language 
 
 See :ref:`porting to Scenic 3` for tools to help migrate existing 2D scenarios.
 
+Unreleased
+------------
+
+Major new features:
+
+	* Added an :ref:`interface <isaac_sim>` to the Isaac Sim and Isaac Lab robotics simulators.
+
+	* Added `toOpenScenario`, which exports completed driving domain simulations as OpenScenarioXML files.
+
+
+Minor new features:
+
+	* Added a :ref:`minimum distance from` operator which computes the minimum distance between the occupied space of two objects.
+
 Scenic 3.1.1
 ------------
 

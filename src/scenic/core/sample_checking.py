@@ -12,6 +12,11 @@ class SampleChecker(ABC):
     def __init__(self):
         self.requirements = None
 
+    def __eq__(self, value):
+        # We don't check self.requirements, since it can have different values
+        # depending on what soft requirements are selected.
+        return type(self) == type(value)
+
     def setRequirements(self, requirements):
         assert self.requirements is None
         self.requirements = tuple(requirements)

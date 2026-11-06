@@ -807,11 +807,28 @@ class Simulation(abc.ABC):
         """Return the current state of the simulation.
 
         The definition of 'state' is up to the simulator; the 'state' is simply saved
-        at each time step to define the 'trajectory' of the simulation.
+        at each time step to define the 'trajectory' of the simulation. Changing this
+        method is however discouraged, unless one is adding additional attributes to
+        the returned ``SimulationState`` object.
 
-        The default implementation returns a tuple of the positions of all objects.
+        The default implementation returns a custom ``SimulationState`` object, which is a tuple
+        of positions of all objects (for backwards compatibility) and also has two attributes:
+        ``positions`` and ``orientations``, which are themselves tuples of the positions and
+        orientations of all objects.
         """
-        return tuple(obj.position for obj in self.objects)
+
+        class SimulationState(tuple):
+            def __new__(cls, positions, orientations):
+                return super().__new__(cls, positions)
+
+            def __init__(self, positions, orientations):
+                self.positions = positions
+                self.orientations = orientations
+
+        positions = tuple(obj.position for obj in self.objects)
+        orientation = tuple(obj.orientation for obj in self.objects)
+
+        return SimulationState(positions, orientation)
 
     @property
     def currentRealTime(self):

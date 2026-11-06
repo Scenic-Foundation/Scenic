@@ -188,6 +188,57 @@ def test_distance_to_region():
     assert p == pytest.approx(2)
 
 
+# Minimum Distance
+def test_minimum_distance():
+    p = sampleParamPFrom(
+        """
+        ego = new Object at (1.5, 2, 2.5),
+            with width 1, with length 2, with height 3
+        other = new Object at (-10, -10, -10),
+            with width 2, with length 2, with height 2
+        param p = minimum distance to other
+        """
+    )
+    assert p == pytest.approx(math.hypot(10, 10, 10))
+
+
+def test_minimum_distance_from():
+    p = sampleParamPFrom(
+        """
+        foo = new Object at (1.5, 2, 2.5),
+            with width 1, with length 2, with height 3
+        bar = new Object at (-10, -10, -10),
+            with width 2, with length 2, with height 2
+        param p = minimum distance from foo to bar
+        """
+    )
+    assert p == pytest.approx(math.hypot(10, 10, 10))
+
+
+def test_minimum_distance_no_ego():
+    with pytest.raises(InvalidScenarioError):
+        sampleParamPFrom(
+            """
+            other = new Object at (-10, -10, -10),
+                with width 2, with length 2, with height 2
+            param p = minimum distance to other
+            """
+        )
+
+
+def test_minimum_distance_2d():
+    p = sampleParamPFrom(
+        """
+        ego = new Object at (1.5, 2),
+            with width 1, with length 2
+        other = new Object at (-10, -10),
+            with width 2, with length 2
+        param p = minimum distance to other
+        """
+    )
+    assert p == pytest.approx(math.hypot(10, 10))
+
+
 # Distance past
 
 

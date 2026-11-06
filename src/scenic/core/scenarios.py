@@ -48,22 +48,36 @@ INITIAL_COLLISION_CHECK = True
 
 
 class _ScenarioPickleMixin:
+    def __init__(self):
+        self._pickleMixinActive = True
+        super().__init__()
+
     def __getstate__(self):
         # Start the pickle with an object storing our compile options and activating
         # the veneer with them; this will ensure they are consistent during import of
         # any needed Scenic modules (which might have been purged earlier, and in any
         # case won't already exist during unpickling). Similarly, tack a dummy object
         # on the end of the pickle which will deactivate the veneer and clean up.
-        oldModules = []
-        options = dataclasses.replace(
-            self.compileOptions,
-            paramOverrides=self.params,  # save all params, not just those from --param
-        )
-        elements = (
-            _Activator(options, oldModules),
-            self.__dict__,
-            _Deactivator(oldModules),
-        )
+        if self._pickleMixinActive:
+            oldModules = []
+            options = dataclasses.replace(
+                self.compileOptions,
+                paramOverrides=self.params,  # save all params, not just those from --param
+            )
+
+            subMixins = []
+            if hasattr(self, "scenario"):
+                assert isinstance(self.scenario, _ScenarioPickleMixin)
+                subMixins.append(self.scenario)
+
+            elements = (
+                _Activator(options, oldModules, tuple(subMixins)),
+                self.__dict__,
+                _Deactivator(oldModules, tuple(subMixins)),
+            )
+        else:
+            elements = ((), self.__dict__, ())
+
         return elements
 
     def __setstate__(self, state):
@@ -71,16 +85,20 @@ class _ScenarioPickleMixin:
 
 
 class _Activator:
-    def __init__(self, compileOptions, oldModules):
+    def __init__(self, compileOptions, oldModules, subMixins):
         self.compileOptions = compileOptions
         # Save all modules already imported prior to pickling
         oldModules.extend(sys.modules.keys())
+        self.subMixins = subMixins
 
     def activate(self):
         import scenic.syntax.veneer as veneer
 
         assert not veneer.isActive()
         veneer.activate(self.compileOptions)
+
+        for sub in self.subMixins:
+            sub._pickleMixinActive = False
 
     def __getstate__(self):
         # Step 1 (during pickling)
@@ -94,8 +112,9 @@ class _Activator:
 
 
 class _Deactivator:
-    def __init__(self, oldModules):
+    def __init__(self, oldModules, subMixins):
         self.oldModules = oldModules
+        self.subMixins = subMixins
 
     def deactivate(self):
         from scenic.syntax.translator import purgeModulesUnsafeToCache
@@ -103,6 +122,11 @@ class _Deactivator:
 
         veneer.deactivate()
         assert not veneer.isActive(), "nested pickle of Scene/Scenario"
+
+        for sub in self.subMixins:
+            assert not sub._pickleMixinActive
+            sub._pickleMixinActive = True
+
         # Purge Scenic modules imported during pickling
         purgeModulesUnsafeToCache(self.oldModules)
 
@@ -133,6 +157,7 @@ class Scene(_ScenarioPickleMixin):
           scene. The ``ego`` object is first, if there is one.
         egoObject (:obj:`~scenic.core.object_types.Object` or `None`): The ``ego`` object, if any.
         params (dict): Dictionary mapping the name of each global parameter to its value.
+        scenario (:obj:`~scenic.core.scenarios.Scenario`): The scenario this scene was sampled from.
         workspace (:obj:`~scenic.core.workspaces.Workspace`): The :term:`workspace` for the scenario.
 
     .. versionchanged:: 3.0
@@ -146,6 +171,7 @@ class Scene(_ScenarioPickleMixin):
         objects,
         egoObject,
         params,
+        scenario,
         temporalReqs=(),
         terminationConds=(),
         termSimulationConds=(),
@@ -158,10 +184,12 @@ class Scene(_ScenarioPickleMixin):
         sample={},
         compileOptions={},
     ):
+        super().__init__()
         self.workspace = workspace
         self.objects = tuple(objects)
         self.egoObject = egoObject
         self.params = params
+        self.scenario = scenario
         self.temporalRequirements = tuple(temporalReqs)
         self.terminationConditions = tuple(terminationConds)
         self.terminateSimulationConditions = tuple(termSimulationConds)
@@ -272,6 +300,7 @@ class Scenario(_ScenarioPickleMixin):
         astHash,
         compileOptions,
     ):
+        super().__init__()
         self.workspace = workspace
         self.simulator = simulator  # simulator for dynamic scenarios
         # make ego the first object, while otherwise preserving order
@@ -590,6 +619,7 @@ class Scenario(_ScenarioPickleMixin):
             sampledObjects,
             ego,
             sampledParams,
+            self,
             temporalReqs,
             terminationConds,
             termSimulationConds,

@@ -1705,6 +1705,17 @@ class ScenicToPythonTransformer(Transformer):
             ),
         )
 
+    def visit_MinDistanceFromOp(self, node: s.MinDistanceFromOp):
+        return ast.Call(
+            func=ast.Name(id="MinDistanceFrom", ctx=loadCtx),
+            args=[self.visit(node.target)],
+            keywords=(
+                [ast.keyword(arg="Y", value=self.visit(node.base))]
+                if node.base is not None
+                else []
+            ),
+        )
+
     def visit_DistancePastOp(self, node: s.DistancePastOp):
         return ast.Call(
             func=ast.Name(id="DistancePast", ctx=loadCtx),

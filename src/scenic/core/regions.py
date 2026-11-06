@@ -1503,7 +1503,11 @@ class MeshVolumeRegion(MeshRegion):
             if slice_3d is None:
                 return nowhere
 
-            slice_2d, _ = slice_3d.to_2D(to_2D=numpy.eye(4))
+            if hasattr(slice_3d, "to_2D"):
+                slice_2d, _ = slice_3d.to_2D(to_2D=numpy.eye(4))
+            else:  # support old `trimesh` versions used by Isaac Sim
+                slice_2d, _ = slice_3d.to_planar(to_2D=numpy.eye(4))
+
             polygons = MultiPolygon(slice_2d.polygons_full) & other.polygons
 
             if polygons.is_empty:
@@ -1758,6 +1762,22 @@ class MeshVolumeRegion(MeshRegion):
             dist = 0
 
         return abs(dist)
+
+    @distributionFunction
+    def minimumDistanceTo(self, other):
+        """Get the minimum distance between this region and another.
+
+        Currently only supports other as a `MeshVolumeRegion`, and is
+        primarily used for computing minimum distance between objects.
+        """
+        if not isinstance(other, MeshVolumeRegion):
+            raise NotImplementedError(
+                f"Cannot compute distance between MeshVolumeRegion and {type(other)}"
+            )
+
+        selfObj = fcl.CollisionObject(*self._fclData)
+        otherObj = fcl.CollisionObject(*other._fclData)
+        return fcl.distance(selfObj, otherObj)
 
     @cached_property
     @distributionFunction

@@ -446,6 +446,12 @@ class DistanceFromOp(AST):
     base: Optional[ast.AST] = None
 
 
+class MinDistanceFromOp(AST):
+    # because `to` and `from` are symmetric, the first operand will be `target` and the second will be `base`
+    target: ast.AST
+    base: Optional[ast.AST] = None
+
+
 class DistancePastOp(AST):
     target: ast.AST
     base: Optional[ast.AST] = None

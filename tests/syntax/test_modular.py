@@ -1413,3 +1413,32 @@ def test_lastActions_modular():
         (5, (-1,)),
         (6, (-2,)),
     )
+
+
+# Modular scenario global state
+def test_mode2D_modular():
+    scenario = compileScenic(
+        """
+        poly = CircularRegion(0@0, 10)
+
+        class Foo:
+            position: new Point in poly
+            regionContainedIn: poly
+
+        scenario Main():
+            setup:
+                ego = new Object
+                new Foo visible
+                require ego.baseOffset == (0,0,0)
+            compose:
+                do Sub() for 2 steps
+
+        scenario Sub():
+            setup:
+                foo = new Object
+                require foo.baseOffset == (0,0,0)
+
+        """,
+        mode2D=True,
+    )
+    sampleResult(scenario, maxSteps=2, maxIterations=100)

@@ -39,7 +39,7 @@ class MetaDriveSimulator(DrivingSimulator):
         timestep=0.1,
         render=True,
         render3D=False,
-        real_time=True,
+        real_time=None,
         screen_record=False,
         screen_record_filename=None,
         screen_record_path="metadrive_gifs",
@@ -51,7 +51,10 @@ class MetaDriveSimulator(DrivingSimulator):
         self.timestep = timestep
         self.sumo_map = sumo_map
         self.xodr_map = xodr_map
-        self.real_time = real_time
+        if real_time is None:
+            self.real_time = self.render or self.render3D
+        else:
+            self.real_time = real_time
         self.screen_record = screen_record
         self.screen_record_filename = screen_record_filename
         self.screen_record_path = screen_record_path

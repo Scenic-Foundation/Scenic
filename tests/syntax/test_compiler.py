@@ -2107,6 +2107,22 @@ class TestCompiler:
             case _:
                 assert False
 
+    def test_min_distance_to_op(self):
+        node, _ = compileScenicAST(MinDistanceFromOp(Name("X"), None))
+        match node:
+            case Call(Name("MinDistanceFrom"), [Name("X")], []):
+                assert True
+            case _:
+                assert False
+
+    def test_min_distance_to_op_from(self):
+        node, _ = compileScenicAST(MinDistanceFromOp(Name("X"), Name("Y")))
+        match node:
+            case Call(Name("MinDistanceFrom"), [Name("X")], [keyword("Y", Name("Y"))]):
+                assert True
+            case _:
+                assert False
+
     def test_distance_past_op(self):
         node, _ = compileScenicAST(DistancePastOp(Name("X")))
         match node:

@@ -84,7 +84,9 @@ def test_pickle(loadLocalScenario):
 def getMetadriveSimulator(getAssetPath):
     base = getAssetPath("maps/CARLA")
 
-    def _getMetadriveSimulator(town, *, render=False, render3D=False, **kwargs):
+    def _getMetadriveSimulator(
+        town, *, render=False, render3D=False, real_time=False, **kwargs
+    ):
         openDrivePath = os.path.join(base, f"{town}.xodr")
         sumoPath = os.path.join(base, f"{town}.net.xml")
         simulator = MetaDriveSimulator(
@@ -92,6 +94,7 @@ def getMetadriveSimulator(getAssetPath):
             xodr_map=openDrivePath,
             render=render,
             render3D=render3D,
+            real_time=real_time,
             **kwargs,
         )
         return simulator, openDrivePath, sumoPath

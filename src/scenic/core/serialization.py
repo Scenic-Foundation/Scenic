@@ -8,9 +8,11 @@ For high-level serialization APIs, see `Scenario.sceneToBytes`,
 import hashlib
 import io
 import math
+import os
 import pickle
 import struct
 import types
+import warnings
 
 from scenic.core.distributions import Samplable, needsSampling
 from scenic.core.utils import DefaultIdentityDict

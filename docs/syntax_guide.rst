@@ -280,6 +280,8 @@ In the following tables, operators are grouped by the type of value they return.
      -  The apparent heading of the `OrientedPoint`, with respect to the line of sight from ego (or the given vector)
    * - :sampref:`distance [from {vector}] to {vector}`
      - The distance to the given position from ego (or the ``from`` vector)
+   * - :sampref:`minimum distance [from {Object}] to {Object}`
+     - The minimum distance to the given object from ego (or the ``from`` object)
    * - :sampref:`angle [from {vector}] to {vector}`
      - The heading (azimuth) to the given position from ego (or the ``from`` vector)
    * - :sampref:`altitude [from {vector}] to {vector}`

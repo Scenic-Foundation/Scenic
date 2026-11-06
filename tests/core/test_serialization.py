@@ -7,8 +7,6 @@ For pickling, see ``test_pickle.py`` and many other tests marked with
 import io
 import math
 import random
-import subprocess
-import sys
 
 import numpy
 import pytest
@@ -46,18 +44,18 @@ def skeleton(scene):
     return {"objects": objs, "params": scene.params}
 
 
-def assertSceneEquivalence(scene1, scene2, ignoreDynamics=False, ignoreConstProps=False):
+def assertSceneEquivalence(scene1, scene2, ignoreScenario=False):
     assert skeleton(scene1) == skeleton(scene2)
     # Samples may not be equivalent since we only serialize random values which actually
     # get used in the scene; so need to delete them before checking equivalence.
     del scene1.sample, scene2.sample
-    if ignoreDynamics:
+    if ignoreScenario:
+        del scene1.scenario, scene2.scenario
         del scene1.dynamicScenario, scene2.dynamicScenario
     for obj in scene1.objects + scene2.objects:
         del obj._sampleParent
-        if ignoreConstProps:
+        if ignoreScenario:
             del obj._constProps
-        if ignoreDynamics:
             del obj._parentScenario
     assert areEquivalent(scene1, scene2)
 
@@ -72,7 +70,11 @@ class TestExportToScenicCode:
         scene1.dumpAsScenicCode(stream)
         code = stream.getvalue()
         scene2 = sampleSceneFrom(code)
-        assertSceneEquivalence(scene1, scene2, ignoreDynamics=True, ignoreConstProps=True)
+        assertSceneEquivalence(
+            scene1,
+            scene2,
+            ignoreScenario=True,
+        )
 
 
 # Serializing scenes and simulations given a compiled scenario

@@ -18,7 +18,7 @@ jobs:
           persist-credentials: false
 
       - name: Run black to check formatting
-        uses: psf/black@8a737e727ac5ab2f1d4cf5876720ed276dc8dc4b
+        uses: psf/black@87928e6d6761a4a6d22250e1fee5601b3998086e
         with:
           version: "25.1.0"
 

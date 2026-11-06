@@ -8,7 +8,7 @@ body:
   - type: markdown
     attributes:
       value: >
-        #### Thank you for contributing! Before submitting a doc issue, please make sure it has no duplicate and has not already been addressed by searching through [the existing and past open and closed issues](https://github.com/BerkeleyLearnVerify/Scenic/issues)
+        #### Thank you for contributing! Before submitting a doc issue, please make sure it has no duplicate and has not already been addressed by searching through [the existing and past open and closed issues](https://github.com/Scenic-Foundation/Scenic/issues)
 
   - type: textarea
     attributes:

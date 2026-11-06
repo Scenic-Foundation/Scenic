@@ -1,7 +1,7 @@
 [<img src="https://docs.scenic-lang.org/en/latest/_static/logo-full.svg" alt="Scenic Logo" height="100">](https://scenic-lang.org/)
 
 [![Documentation Status](https://readthedocs.org/projects/scenic-lang/badge/?version=latest)](https://docs.scenic-lang.org/en/latest/?badge=latest)
-[![Tests Status](https://github.com/BerkeleyLearnVerify/Scenic/actions/workflows/run-tests.yml/badge.svg)](https://github.com/BerkeleyLearnVerify/Scenic/actions/workflows/run-tests.yml)
+[![Tests Status](https://github.com/Scenic-Foundation/Scenic/actions/workflows/run-tests.yml/badge.svg)](https://github.com/Scenic-Foundation/Scenic/actions/workflows/run-tests.yml)
 [![License](https://img.shields.io/badge/License-BSD%203--Clause-blue.svg)](https://opensource.org/licenses/BSD-3-Clause)
 
 A compiler and scenario generator for Scenic, a domain-specific probabilistic programming language for modeling the environments of cyber-physical systems.
@@ -15,7 +15,7 @@ Scenic was initially designed and implemented at UC Berkeley by Daniel J. Fremon
 Subsequent work has been done primarily at UC Berkeley and UC Santa Cruz: in particular, Edward Kim made major contributions to Scenic 2, and Eric Vin, Shun Kashiwa, Matthew Rhea, and Ellen Kalvan to Scenic 3.
 Please see our [Credits](https://docs.scenic-lang.org/en/latest/credits.html) page for details and more contributors.
 
-If you have any problems using Scenic, please submit an issue to [our GitHub repository](https://github.com/BerkeleyLearnVerify/Scenic) or start a conversation on our [community forum](https://forum.scenic-lang.org/).
+If you have any problems using Scenic, please submit an issue to [our GitHub repository](https://github.com/Scenic-Foundation/Scenic) or start a conversation on our [community forum](https://forum.scenic-lang.org/).
 
 The repository is organized as follows:
 

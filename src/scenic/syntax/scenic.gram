@@ -235,8 +235,8 @@ class Parser(Parser):
             self.raise_syntax_error_known_location("imaginary number required in complex literal", number)
         return value
 
-    def check_fstring_conversion(self, mark: tokenize.TokenInfo, name: tokenize.TokenInfo) -> tokenize.TokenInfo:
-        if mark.lineno != name.lineno or mark.col_offset != name.col_offset:
+    def check_fstring_conversion(self, mark: tokenize.TokenInfo, name: tokenize.TokenInfo) -> int:
+        if mark.end != name.start:
             self.raise_syntax_error_known_range(
                 "f-string: conversion type must come right after the exclamanation mark",
                 mark,
@@ -250,7 +250,7 @@ class Parser(Parser):
                 name,
             )
 
-        return name
+        return ord(s)
 
     def _concat_strings_in_constant(self, parts) -> Union[str, bytes]:
         s = ast.literal_eval(parts[0].string)
@@ -1853,6 +1853,8 @@ scenic_prefix_operators:
     # distance past
     | "distance" "past" e1=expression 'of' e2=scenic_prefix_operators { s.DistancePastOp(target=e1, base=e2, LOCATIONS) }
     | "distance" "past" e1=scenic_prefix_operators { s.DistancePastOp(target=e1, LOCATIONS) }
+    # minimum distance from/to
+    | &"minimum" scenic_min_distance_from_op
     # angle from/to
     | &"angle" scenic_angle_from_op
     # altitude from/to
@@ -1867,6 +1869,11 @@ scenic_distance_from_op:
     | "distance" 'from' e1=expression 'to' e2=scenic_prefix_operators { s.DistanceFromOp(target=e1, base=e2, LOCATIONS) }
     | "distance" 'to' e1=expression 'from' e2=scenic_prefix_operators { s.DistanceFromOp(target=e1, base=e2, LOCATIONS) }
     | "distance" ('to'|'from') e1=scenic_prefix_operators { s.DistanceFromOp(target=e1, LOCATIONS) }
+
+scenic_min_distance_from_op:
+    | "minimum" "distance" 'from' e1=expression 'to' e2=scenic_prefix_operators { s.MinDistanceFromOp(target=e1, base=e2, LOCATIONS) }
+    | "minimum" "distance" 'to' e1=expression 'from' e2=scenic_prefix_operators { s.MinDistanceFromOp(target=e1, base=e2, LOCATIONS) }
+    | "minimum" "distance" ('to'|'from') e1=scenic_prefix_operators { s.MinDistanceFromOp(target=e1, LOCATIONS) }
 
 scenic_angle_from_op:
     | "angle" 'from' e1=expression 'to' e2=scenic_prefix_operators { s.AngleFromOp(base=e1, target=e2, LOCATIONS) }
@@ -2197,9 +2204,9 @@ fstring_replacement_field:
         ast.FormattedValue(
             value=a,
             conversion=(
-                conversion.decode()[0]
-                if conversion else
-                (b'r'[0] if debug_expr else -1)
+                conversion
+                if conversion is not None else
+                (ord('r') if debug_expr else -1)
             ),
             format_spec=format,
             LOCATIONS

@@ -22,12 +22,12 @@ Now you can install Scenic either from the repository or from PyPI:
 
     .. tab:: Repository
 
-        The following commands will clone the `Scenic repository <https://github.com/BerkeleyLearnVerify/Scenic>`_ into a folder called :file:`Scenic` and install Scenic from there.
+        The following commands will clone the `Scenic repository <https://github.com/Scenic-Foundation/Scenic>`_ into a folder called :file:`Scenic` and install Scenic from there.
         It is an "editable install", so if you later update the repository with :command:`git pull` or make changes to the code yourself, you won't need to reinstall Scenic.
 
         .. code-block:: text
 
-            git clone https://github.com/BerkeleyLearnVerify/Scenic
+            git clone https://github.com/Scenic-Foundation/Scenic
             cd Scenic
             python -m pip install -e .
 

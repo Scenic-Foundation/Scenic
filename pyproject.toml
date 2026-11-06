@@ -1,6 +1,6 @@
 [project]
 name = "scenic"
-version = "3.1.1"
+version = "3.2.0b1"
 description = "The Scenic scenario description language."
 authors = [
 	{ name = "Daniel Fremont" },
@@ -60,6 +60,9 @@ metadrive = [
 	"metadrive-simulator >= 0.4.3",
 	"sumolib >= 1.21.0",
 ]
+openscenario = [
+	"scenariogeneration"
+]
 test = [	# minimum dependencies for running tests (used for tox virtualenvs)
 	"pytest >= 7.0.0",
 	"pytest-cov >= 3.0.0",
@@ -68,6 +71,7 @@ test = [	# minimum dependencies for running tests (used for tox virtualenvs)
 test-full = [  # like 'test' but adds dependencies for optional features
 	"scenic[test]",       # all dependencies from 'test' extra above
 	"scenic[guideways]",  # for running guideways modules
+	"scenic[openscenario]",
 	"astor >= 0.8.1",
 	'carla >= 0.9.12; python_version <= "3.12" and (platform_system == "Linux" or platform_system == "Windows")',
 	"dill",
@@ -83,7 +87,7 @@ test-full = [  # like 'test' but adds dependencies for optional features
 ]
 dev = [
 	"scenic[test-full]",
-	"black ~= 25.1.0",
+	"black ~= 23.12.1",
 	"isort ~= 5.12.0",
 	"pre-commit ~= 3.0",
 	"pytest-cov >= 3.0.0",
@@ -92,7 +96,7 @@ dev = [
 
 [project.urls]
 Homepage = "https://scenic-lang.org/"
-Repository = "https://github.com/BerkeleyLearnVerify/Scenic"
+Repository = "https://github.com/Scenic-Foundation/Scenic"
 Documentation = "https://docs.scenic-lang.org"
 
 [project.scripts]
