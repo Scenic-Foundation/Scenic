@@ -124,7 +124,7 @@ We will keep the reporting party informed when appropriate and when doing so doe
 
 For significant incidents, we may communicate through one or more of the following:
 
-- [GitHub Security Advisories](https://github.com/BerkeleyLearnVerify/Scenic/security/advisories)
+- [GitHub Security Advisories](https://github.com/Scenic-Foundation/Scenic/security/advisories)
 - GitHub release notes
 - the [Scenic forum](https://forum.scenic-lang.org/)
 - the [Scenic website](https://scenic-lang.org/) or project documentation
