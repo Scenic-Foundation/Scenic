@@ -1,5 +1,6 @@
 import xml.etree.ElementTree as ET
 
+import attr
 import pytest
 
 from scenic.formats.opendrive.xodr_parser import OpenDriveWarning, speed_to_mps
@@ -188,6 +189,43 @@ def test_speed_to_mps_unlimited_returns_none():
 def test_speed_to_mps_rejects_unknown_unit():
     with pytest.raises(ValueError, match="unsupported speed unit"):
         speed_to_mps(_speed_elem(50, "furlongs/fortnight"))
+
+
+def test_type_records_fill_a_leading_gap_and_ignore_duplicates_past_the_end(tmp_path):
+    """A first record after s=0, a repeated station, and a record at the road end."""
+    network = parse_scenic_network(
+        tmp_path,
+        road_extras=(
+            '<type s="5" type="town"><speed max="30" unit="m/s"/></type>'
+            '<type s="5" type="town"><speed max="40" unit="m/s"/></type>'
+            '<type s="20" type="town"><speed max="10" unit="m/s"/></type>'
+        ),
+    )
+    lane_section = network.elements["road7"].lanes[0].sections[0]
+    assert lane_section.speedLimitRanges == (
+        (0.0, None),
+        (5.0, 40.0),
+    )
+    assert lane_section.speedLimitAt(2.0) is None
+    assert lane_section.speedLimitAt(6.0) == pytest.approx(40.0)
+
+
+def test_speed_limit_ranges_must_start_at_zero_and_increase(tmp_path):
+    lane_section = parse_scenic_network(tmp_path).elements["road7"].lanes[0].sections[0]
+    checked = attr.evolve(
+        lane_section,
+        speedLimitRanges=((0.0, 10.0), (4.0, 20.0)),
+    )
+    assert checked.speedLimitAt(2.0) == pytest.approx(10.0)
+    assert checked.speedLimitAt(5.0) == pytest.approx(20.0)
+
+    with pytest.raises(AssertionError):
+        attr.evolve(lane_section, speedLimitRanges=((1.0, 10.0),))
+    with pytest.raises(AssertionError):
+        attr.evolve(
+            lane_section,
+            speedLimitRanges=((0.0, 10.0), (0.0, 20.0)),
+        )
 
 
 def test_section_spanning_multiple_speeds_warns(tmp_path):

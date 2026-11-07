@@ -1391,9 +1391,6 @@ class Road:
             for group in road.laneGroups:
                 if group.speedLimit is None:
                     group.speedLimit = road_speed_limit
-            for lane in lanes:
-                if lane.speedLimit is None:
-                    lane.speedLimit = road_speed_limit
 
         # Set up parent references
         if forwardGroup:
