@@ -113,6 +113,8 @@ def findNodeTypesIn(types, world, nodeClasses={}):
     types = tuple(types)
     instances = {ty: [] for ty in types}
     for node in world.children:
+        if isinstance(node, WBTParser.ExternprotoContext):
+            continue
         if isinstance(node, WBTParser.DefnContext):
             node = node.node()
         nodeType = node.Identifier().getText()
