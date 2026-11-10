@@ -33,6 +33,22 @@ def test_primitive():
     assert not x.isPrimitive
 
 
+def test_discrete_range_repr():
+    # Unweighted ranges store weights=None and coerce constant endpoints to float.
+    assert repr(DiscreteRange(0, 1)) == "DiscreteRange(0.0, 1.0)"
+    assert repr(DiscreteRange(1, 0)) == "DiscreteRange(1.0, 0.0)"
+    assert repr(DiscreteRange(0, 0, weights=())) == "DiscreteRange(0.0, 0.0)"
+
+    # Weighted ranges keep integer endpoints and omit uniform weights.
+    assert repr(DiscreteRange(0, 1, weights=(1, 1))) == "DiscreteRange(0, 1)"
+    assert repr(DiscreteRange(0, 1, weights=(1, 2))) == "DiscreteRange(0, 1, (1, 2))"
+
+    # Cascading uses of repr (Range messages, operator distributions) must not crash.
+    r = Range(DiscreteRange(0, 1), 5)
+    assert "DiscreteRange(0.0, 1.0)" in repr(r)
+    assert repr(DiscreteRange(0, 1) + 1) == "DiscreteRange(0.0, 1.0).__add__(1)"
+
+
 def test_support_basic():
     assert supportInterval(Range(-3, 5)) == (-3, 5)
     assert supportInterval(Normal(5, 5)) == (None, None)

@@ -1271,7 +1271,7 @@ class DiscreteRange(Distribution):
 
     def __repr__(self):
         weights = self.weights
-        if all(weight == weights[0] for weight in weights):
+        if weights is None or all(weight == weights[0] for weight in weights):
             return f"DiscreteRange({self.low!r}, {self.high!r})"
         else:
             return f"DiscreteRange({self.low!r}, {self.high!r}, {self.weights})"
