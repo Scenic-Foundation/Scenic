@@ -450,6 +450,21 @@ class Context(IntFlag):
 
 
 class ScenicToPythonTransformer(Transformer):
+    def visit_Import(self, node):
+        return self._wrap_scenic_import(node)
+
+    def visit_ImportFrom(self, node):
+        return self._wrap_scenic_import(node)
+
+    def _wrap_scenic_import(self, node):
+        context = ast.Call(
+            func=ast.Name(id="allow_scenic_file_imports", ctx=ast.Load()),
+            args=[],
+            keywords=[],
+        )
+        with_item = ast.withitem(context_expr=context, optional_vars=None)
+        return ast.With(items=[with_item], body=[node])
+
     def __init__(self, filename) -> None:
         super().__init__(filename)
 
