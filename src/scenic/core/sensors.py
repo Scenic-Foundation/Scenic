@@ -6,7 +6,7 @@ import math
 import os.path
 import pickle
 import sys
-from typing import Literal, Tuple
+from typing import Literal, Optional, Tuple
 
 import PIL.Image
 import cv2

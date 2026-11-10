@@ -2580,10 +2580,10 @@ class PolygonalFootprintRegion(Region):
     def containsRegionInner(self, reg, tolerance):
         buffered_polygons = self.polygons.buffer(tolerance)
 
-        if isinstance(other, MeshRegion):
+        if isinstance(reg, MeshRegion):
             return buffered_polygons.contains(reg._boundingPolygon)
 
-        if isinstance(other, (PolygonalRegion, PolygonalFootprintRegion)):
+        if isinstance(reg, (PolygonalRegion, PolygonalFootprintRegion)):
             return buffered_polygons.contains(reg.polygons)
 
         raise NotImplementedError

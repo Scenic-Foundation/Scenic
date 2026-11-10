@@ -6,7 +6,7 @@ import math
 import numpy as np
 import trimesh
 
-from scenic.core.regions import Region
+from scenic.core.regions import Region, SpheroidRegion
 from scenic.core.type_support import toVector
 from scenic.core.utils import batched
 from scenic.core.vectors import Vector
