@@ -1411,11 +1411,11 @@ class UniformDistribution(Distribution):
         return f"UniformDistribution({self.options!r})"
 
 
-class SeededGenerator(Distribution):
+class SeededGeneratorDistribution(Distribution):
     _deterministic = True
 
     def __init__(self):
-        self.randomSeed = DiscreteRange(0, 2**64)
+        self.randomSeed = Range(0, 1)
         super().__init__(self.randomSeed)
 
     def sampleGiven(self, value):

@@ -126,7 +126,7 @@ __all__ = (
     "Discrete",
     "Normal",
     "TruncatedNormal",
-    "SeededGenerator",
+    "SeededGeneratorDistribution",
     "VerifaiParameter",
     "VerifaiRange",
     "VerifaiDiscreteRange",
@@ -207,7 +207,7 @@ from scenic.core.distributions import (
     Options,
     RandomControlFlowError,
     Range,
-    SeededGenerator,
+    SeededGeneratorDistribution,
     TruncatedNormal,
     Uniform,
 )
