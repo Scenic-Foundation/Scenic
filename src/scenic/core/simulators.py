@@ -24,6 +24,7 @@ import queue
 import random
 import signal
 import sys
+import textwrap
 import threading
 import time
 import traceback
@@ -1238,6 +1239,18 @@ class SimulatorGroup:
             process.logQueue = logQueue
             processes.append(process)
 
+        def extractLogQueue(p):
+            # Write queue messages to a string buffer
+            buffer = io.StringIO()
+
+            while True:
+                try:
+                    buffer.write(p.logQueue.get(block=True, timeout=5))
+                except queue.Empty:
+                    break
+
+            return textwrap.indent(buffer.getvalue(), "  ")
+
         # Job creation utilities
         remainingJobs = 0
         jobId = 0
@@ -1268,16 +1281,8 @@ class SimulatorGroup:
 
             for p in monitoredProcesses:
                 if not p.is_alive():
-                    # Write queue messages to a string buffer
-                    buffer = io.StringIO()
-                    while True:
-                        try:
-                            buffer.write(p.logQueue.get(block=True, timeout=5))
-                        except queue.Empty:
-                            break
-
                     raise RuntimeError(
-                        f"Worker process {p.pid} has died with the following error:\n{buffer.getvalue()}"
+                        f"Worker process {p.pid} has died with the following error:\n{extractLogQueue(p)}"
                     )
 
         def monitoringQueueGet(q):
@@ -1341,7 +1346,9 @@ class SimulatorGroup:
             # Terminate any remaining processes and close queues
             for p in processes:
                 if p.is_alive():
-                    warnings.warn(f"Forcefully killing SimulatorGroup worker: {p.pid}")
+                    warnings.warn(
+                        f"Forcefully killing SimulatorGroup worker {p.pid}. Worker logs:\n{extractLogQueue(p)}"
+                    )
                     p.terminate()
 
             for p in processes:
