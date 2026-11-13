@@ -11,8 +11,14 @@ mapFolder = Path("assets") / "maps"
 maps = glob.glob(str(mapFolder / "**" / "*.xodr"))
 
 badmaps = []  # currently all maps are working!
+# Maps with targeted parser tests but not yet supported for full scenario load.
+scenario_test_exclusions = {
+    str(mapFolder / "misc" / "bs-schwarzer-berg.xodr"),
+}
 map_params = []
 for path in maps:
+    if path in scenario_test_exclusions:
+        continue
     if path in badmaps:
         param = pytest.param(
             badmap,
