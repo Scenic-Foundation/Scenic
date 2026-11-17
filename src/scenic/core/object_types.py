@@ -1832,6 +1832,11 @@ class Point2D(Point):
     _scenic_properties = {}
     _3DClass = Point
 
+    def __init__(self, *args, **kwargs):
+        if not isinstance(self, (OrientedPoint2D, Object2D)):
+            breakpoint()
+        super().__init__(*args, **kwargs)
+
     @cached_property
     def visibleRegion(self):
         """The :term:`visible region` of this 2D point.
