@@ -257,6 +257,7 @@ class Constructible(Samplable):
 
         # Possibly register this object
         if register:
+            breakpoint()
             obj._register()
 
         return obj
@@ -1831,11 +1832,6 @@ class Point2D(Point):
 
     _scenic_properties = {}
     _3DClass = Point
-
-    def __init__(self, *args, **kwargs):
-        if not isinstance(self, (OrientedPoint2D, Object2D)):
-            breakpoint()
-        super().__init__(*args, **kwargs)
 
     @cached_property
     def visibleRegion(self):
