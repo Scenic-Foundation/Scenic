@@ -3265,7 +3265,7 @@ class CircularRegion(PolygonalRegion):
     def distanceTo(self, point):
         point = toVector(point)
 
-        if point.z == 0:
+        if point.z == self.z:
             return max(0, point.distanceTo(self.center) - self.radius)
 
         return super().distanceTo(point)

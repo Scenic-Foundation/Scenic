@@ -279,6 +279,11 @@ def test_polygon_sampling():
     assert sum(y >= 1.5 for y in ys) >= 1250
 
 
+def test_circular_region_distance_to_off_plane_point():
+    circle = CircularRegion((0, 0, 5), 1, resolution=64)
+    assert circle.distanceTo((0, 0, 0)) == pytest.approx(5.0)
+
+
 def test_polygon_trueContainsPoint():
     r = CircularRegion((0, 0), 1, resolution=64)
 
