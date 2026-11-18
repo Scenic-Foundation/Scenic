@@ -285,6 +285,9 @@ class CarlaSimulation(DrivingSimulation):
                 carla_sensor.listen(sensor.onData)
                 sensor.carla_sensor = carla_sensor
 
+                if hasattr(carla_sensor, "enable_for_ros"):
+                    carla_sensor.enable_for_ros()
+
         return carlaActor
 
     def executeActions(self, allActions):
