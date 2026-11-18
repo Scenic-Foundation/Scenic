@@ -995,7 +995,7 @@ class MeshRegion(Region):
         if len(intersection_data) == 0:
             return None
 
-        distances = numpy.linalg.norm(intersection_data - numpy.asarray(point))
+        distances = numpy.linalg.norm(intersection_data - numpy.asarray(point), axis=1)
         closest_point = intersection_data[numpy.argmin(distances)]
 
         return Vector(*closest_point)
