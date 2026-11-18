@@ -163,9 +163,10 @@ class Serializer:
         """Current version of the `Simulation` replay serialization format.
 
         Must be incremented if the `writeReplayHeader` or `writeValue` methods
-        change, or if a new codec is added.
+        change, or if a new codec is added, or if the set of values saved for each
+        time step changes.
         """
-        return 2
+        return 3
 
     def writeScene(self, scenario, scene):
         """Serialize a `Scene`."""

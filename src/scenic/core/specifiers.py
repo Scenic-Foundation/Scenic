@@ -86,9 +86,14 @@ class ModifyingSpecifier(Specifier):
 class PropertyDefault:
     """A default value, possibly with dependencies."""
 
-    def __init__(self, requiredProperties, attributes, value):
+    def __init__(self, requiredProperties, attributes, value, dynamicValue=None):
         self.requiredProperties = set(requiredProperties)
         self.value = value
+        #: Alternative way to compute this property during dynamic simulations, whose
+        #: result is stored as is, skipping the normalization `value` goes through.
+        #: If `None`, final properties are recomputed using `value` as usual, and
+        #: non-final properties are provided by the simulator.
+        self.dynamicValue = dynamicValue
 
         def enabled(thing, default):
             if thing in attributes:
@@ -104,6 +109,8 @@ class PropertyDefault:
             raise RuntimeError(f'unknown property attribute "{attr}"')
         if self.isAdditive and self.isDynamic:
             raise InvalidScenarioError("additive properties cannot be dynamic")
+        if self.dynamicValue and not self.isDynamic:
+            raise RuntimeError("only dynamic properties can have a dynamicValue")
 
     @staticmethod
     def forValue(value):
@@ -120,6 +127,10 @@ class PropertyDefault:
                 if prop == "heading":
                     msg += " (perhaps this scenario requires the --2d flag?)"
                 raise InvalidScenarioError(msg)
+            if other.isDynamic and self.isFinal:
+                raise InvalidScenarioError(
+                    f'dynamic property "{prop}" cannot be overridden as final'
+                )
         if self.isAdditive:
             allReqs = self.requiredProperties
             for other in overriddenDefs:

@@ -1,7 +1,15 @@
 import pytest
 
+from scenic.core.object_types import Object
 from scenic.core.simulators import DummySimulation, DummySimulator, Simulation
-from tests.utils import compileScenic, sampleResultFromScene, sampleSceneFrom
+from scenic.core.vectors import Orientation
+from tests.utils import (
+    OrientationSimulation,
+    OrientationSimulator,
+    compileScenic,
+    sampleResultFromScene,
+    sampleSceneFrom,
+)
 
 
 def test_old_style_simulator():
@@ -94,3 +102,76 @@ def test_simulator_bad_scheduler():
     simulator = TestSimulator()
     with pytest.raises(RuntimeError):
         result = simulator.simulate(scene, maxSteps=2)
+
+
+# Simulators providing orientation directly
+
+
+def test_provides_orientation():
+    scene = sampleSceneFrom(
+        """
+        ego = new Object
+        record ego.orientation as orientation
+        record ego.yaw as yaw
+        record ego.pitch as pitch
+        record ego.roll as roll
+        record ego.heading as heading
+        """
+    )
+    result = OrientationSimulator(spin=0.1).simulate(scene, maxSteps=2)
+    for step in range(3):
+        expected = Orientation._fromEuler(0.1 * step, 0.2, 0.3)
+        assert result.records["orientation"][step][1] == expected
+        assert result.records["yaw"][step][1] == pytest.approx(0.1 * step)
+        assert result.records["pitch"][step][1] == pytest.approx(0.2)
+        assert result.records["roll"][step][1] == pytest.approx(0.3)
+        assert result.records["heading"][step][1] == pytest.approx(0.1 * step)
+
+
+def test_provides_orientation_local():
+    """Euler angles are derived in the frame of the parent orientation."""
+    scene = sampleSceneFrom(
+        """
+        ego = new Object with parentOrientation (0, 0.2, 0.3)
+        record ego.yaw as yaw
+        record ego.pitch as pitch
+        record ego.roll as roll
+        record ego.orientation as orientation
+        """
+    )
+    result = OrientationSimulator().simulate(scene, maxSteps=1)
+    # The simulator reports the same orientation as the parent orientation, so the
+    # local angles are all zero.
+    assert result.records["orientation"][1][1] == Orientation._fromEuler(0, 0.2, 0.3)
+    for prop in ("yaw", "pitch", "roll"):
+        assert result.records[prop][1][1] == pytest.approx(0, abs=1e-12)
+
+
+def test_derived_properties_are_lazy():
+    """Derived properties are recomputed only when actually used."""
+    present = []
+
+    class LazySimulation(OrientationSimulation):
+        def updateObjects(self):
+            super().updateObjects()
+            obj = self.objects[0]
+            present.append({prop for prop in props if prop in obj.__dict__})
+
+    class LazySimulator(DummySimulator):
+        def createSimulation(self, scene, **kwargs):
+            return LazySimulation(scene, **kwargs)
+
+    props = ("orientation", "yaw", "pitch", "roll")
+    scene = sampleSceneFrom("ego = new Object")
+    LazySimulator().simulate(scene, maxSteps=2)
+    # `orientation` is provided by the simulator, while nothing reads the Euler
+    # angles, so they should never be recomputed.
+    assert present == [{"orientation"}] * 3
+
+
+def test_unknown_property():
+    """Deriving properties on demand must not change the error for unknown ones."""
+    obj = Object._with()
+    with pytest.raises(AttributeError) as e:
+        obj.notAProperty
+    assert "'Object' object has no attribute 'notAProperty'" in str(e.value)

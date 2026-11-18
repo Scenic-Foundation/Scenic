@@ -301,14 +301,12 @@ class NewtonianSimulation(DrivingSimulation):
         imgs = [Image.fromarray(frame) for frame in self.frames]
         imgs[0].save(filename, save_all=True, append_images=imgs[1:], duration=50, loop=0)
 
-    def getProperties(self, obj, properties):
-        yaw, _, _ = obj.parentOrientation.globalToLocalAngles(obj.heading, 0, 0)
+    providesOrientation = True
 
+    def getProperties(self, obj, properties):
         values = dict(
             position=obj.position,
-            yaw=yaw,
-            pitch=0,
-            roll=0,
+            orientation=Orientation._fromHeading(obj.heading),
             velocity=obj.velocity,
             speed=obj.speed,
             angularSpeed=obj.angularSpeed,

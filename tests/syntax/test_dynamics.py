@@ -7,7 +7,9 @@ import pytest
 import scenic.core.dynamics as dynamics
 from scenic.core.errors import InvalidScenarioError, ScenicSyntaxError
 from scenic.core.simulators import RejectSimulationException, TerminationType
+from scenic.core.vectors import Vector
 from tests.utils import (
+    OrientationSimulator,
     checkErrorLineNumber,
     compileScenic,
     sampleActions,
@@ -19,6 +21,7 @@ from tests.utils import (
     sampleResultFromScene,
     sampleResultOnce,
     sampleScene,
+    sampleSceneFrom,
 )
 
 ## Dynamic state
@@ -52,6 +55,46 @@ def test_dynamic_final_property():
     )
     actions = sampleEgoActions(scenario, maxSteps=4)
     assert len(actions) == 3
+
+
+def test_dynamic_final_property_derived():
+    """A dynamic final property is recomputed from the values the simulator provides."""
+    scene = sampleSceneFrom(
+        """
+        class TestObj:
+            doubleYaw[dynamic, final]: 2 * self.yaw
+        ego = new TestObj
+        record ego.doubleYaw as val
+        """
+    )
+    result = OrientationSimulator(spin=0.1).simulate(scene, maxSteps=2)
+    for step in range(3):
+        assert result.records["val"][step][1] == pytest.approx(2 * 0.1 * step)
+
+
+def test_dynamic_final_normalized():
+    scene = sampleSceneFrom(
+        """
+        class TestObj:
+            cameraOffset[dynamic, final]: (1, 2, 3)
+        ego = new TestObj
+        record ego.cameraOffset as offset
+        """
+    )
+    result = sampleResultFromScene(scene, maxSteps=1)
+    assert isinstance(result.records["offset"][1][1], Vector)
+
+
+def test_dynamic_heading_is_yaw():
+    """With Euler angles provided, heading is the yaw even if pitch is out of range."""
+    scene = sampleSceneFrom(
+        """
+        ego = new Object with yaw 0.5, with pitch 3
+        record ego.heading as heading
+        """
+    )
+    result = sampleResultFromScene(scene, maxSteps=1)
+    assert result.records["heading"][1][1] == pytest.approx(0.5)
 
 
 def test_dynamic_cached_property():

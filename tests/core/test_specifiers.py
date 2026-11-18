@@ -1,8 +1,10 @@
 import itertools
 
+import pytest
+
 from scenic.core.lazy_eval import DelayedArgument
 import scenic.core.object_types
-from scenic.core.specifiers import ModifyingSpecifier, Specifier
+from scenic.core.specifiers import ModifyingSpecifier, PropertyDefault, Specifier
 
 
 def test_modifying_dependencies():
@@ -33,3 +35,9 @@ def test_modifying_dependencies():
         obj = scenic.core.object_types.Object._withSpecifiers(specs)
         assert obj.foo == 14
         assert obj.bar == 140
+
+
+def test_dynamic_value_requires_dynamic():
+    with pytest.raises(RuntimeError) as e:
+        PropertyDefault((), {}, lambda self: 0, dynamicValue=lambda self: 1)
+    assert "only dynamic properties can have a dynamicValue" in str(e.value)
