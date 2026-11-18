@@ -1234,6 +1234,106 @@ class Signal:
         return self.hasTag(SignalTag.TURN_ON_RED_ALLOWED)
 
 
+def _haltMarkTransform(ax, transforms, center, slot):
+    """Point-sized mark anchored at ``center``, stepped sideways when ``slot`` > 0."""
+    # Point coordinates, then pixels, then the halt point's display position.
+    return (
+        transforms.Affine2D().translate(slot * 14, 0)
+        + transforms.Affine2D().scale(ax.figure.dpi / 72.0)
+        + transforms.ScaledTranslation(center.x, center.y, ax.transData)
+    )
+
+
+def _pointOnRoad(road, s, t):
+    """World point at station ``s`` and lateral offset ``t`` on ``road``.
+
+    Positive ``t`` is to the left of the reference line, matching OpenDRIVE.
+    """
+    length = road.centerline.length
+    s = min(max(float(s), 0.0), length)
+    reference = road.centerline.pointAlongBy(s)
+    if not t:
+        return reference
+    index = bisect.bisect_left(road.centerline.cumulativeLengths, s)
+    index = min(max(index, 0), len(road.centerline.segments) - 1)
+    start, end = road.centerline.segments[index]
+    tangent_x, tangent_y = end[0] - start[0], end[1] - start[1]
+    norm = math.hypot(tangent_x, tangent_y) or 1.0
+    return Vector(
+        reference.x + (-tangent_y / norm) * t,
+        reference.y + (tangent_x / norm) * t,
+    )
+
+
+def _showStopSign(ax, patches, transforms, center, slot):
+    """Draw a flat-topped red octagon in point-size, anchored at ``center``."""
+    ax.add_patch(
+        patches.RegularPolygon(
+            (0, 0),
+            numVertices=8,
+            radius=8,
+            orientation=math.pi / 8,
+            facecolor="#C00000",
+            edgecolor="white",
+            linewidth=0.8,
+            transform=_haltMarkTransform(ax, transforms, center, slot),
+            zorder=5,
+            clip_on=False,
+        )
+    )
+
+
+def _showYieldSign(ax, patches, transforms, center, slot):
+    """Draw a downward red-bordered triangle in point-size, anchored at ``center``."""
+    transform = _haltMarkTransform(ax, transforms, center, slot)
+    for radius, color, order in ((8, "#C00000", 5), (5.2, "white", 6)):
+        ax.add_patch(
+            patches.RegularPolygon(
+                (0, 0),
+                numVertices=3,
+                radius=radius,
+                orientation=math.pi,
+                facecolor=color,
+                edgecolor=color,
+                linewidth=0.4,
+                transform=transform,
+                zorder=order,
+                clip_on=False,
+            )
+        )
+
+
+def _showTrafficLight(ax, patches, transforms, center, slot):
+    """Draw an upright signal head in point-size, anchored at ``center``."""
+    width, height = 8, 20
+    transform = _haltMarkTransform(ax, transforms, center, slot)
+    ax.add_patch(
+        patches.Rectangle(
+            (-width / 2, -height / 2),
+            width,
+            height,
+            facecolor="#1A1A1A",
+            edgecolor="#1A1A1A",
+            linewidth=0.4,
+            transform=transform,
+            zorder=5,
+            clip_on=False,
+        )
+    )
+    for index, color in enumerate(("#E10600", "#F0C000", "#1FA33A")):
+        ax.add_patch(
+            patches.Circle(
+                (0, height / 2 - 4.2 - index * 5.6),
+                2.1,
+                facecolor=color,
+                edgecolor="none",
+                transform=transform,
+                zorder=6,
+                clip_on=False,
+            )
+        )
+
+
 @attr.s(auto_attribs=True, kw_only=True, repr=False, eq=False)
 class Network:
     """Network()
@@ -1758,11 +1858,80 @@ class Network:
         elem = self.findPointIn(point, self._nominalDirElems, reject)
         return elem.nominalDirectionsAt(point) if elem is not None else ()
 
+    def _showHaltMarks(self, plt):
+        """Draw halt lines, stop signs, yield signs, and traffic-light marks.
+
+        A stop, yield, or all-way halt is a line across each lane it controls.
+        A stop sign is also a red octagon, and an all-way stop uses the same
+        sign. A yield is a downward triangle with a red border. A traffic light
+        is a box with red, yellow, and green circles, drawn at the pole rather
+        than on the stop line. Marks that share a point are stepped sideways
+        so each one stays visible.
+        """
+        import matplotlib.patches as patches
+        import matplotlib.transforms as transforms
+
+        ax = plt.gca()
+        seen_marks = set()
+        marks_here = {}
+        for lane in self.lanes:
+            length = lane.centerline.length
+            if length <= 0:
+                continue
+            for entry in lane._signalEntries:
+                signal = entry.signal
+                local_s = min(max(entry.localS, 0.0), length)
+                center = lane.centerline.pointAlongBy(local_s)
+                if (
+                    signal.isStop
+                    or signal.isYield
+                    or signal.isFourWay
+                    or signal.isTrafficLight
+                ):
+                    left = lane.leftEdge.project(center)
+                    right = lane.rightEdge.project(center)
+                    plt.plot(
+                        (left.x, right.x),
+                        (left.y, right.y),
+                        color="#1E3A8A",
+                        linewidth=2.5,
+                        solid_capstyle="butt",
+                        zorder=4,
+                    )
+                if (
+                    signal.isTrafficLight
+                    or signal.isStop
+                    or signal.isFourWay
+                    or signal.isYield
+                ):
+                    key = (signal.openDriveID, lane.road.uid, round(entry.roadS, 2))
+                    if key in seen_marks:
+                        continue
+                    seen_marks.add(key)
+                    # A signal head sits at its pole. The stop line stays at the halt.
+                    if signal.isTrafficLight and signal.s is not None:
+                        anchor = _pointOnRoad(lane.road, signal.s, signal.t or 0.0)
+                    else:
+                        anchor = center
+                    place = (round(anchor.x, 1), round(anchor.y, 1))
+                    slot = marks_here.get(place, 0)
+                    marks_here[place] = slot + 1
+                    if signal.isTrafficLight:
+                        _showTrafficLight(ax, patches, transforms, anchor, slot)
+                    elif signal.isYield:
+                        _showYieldSign(ax, patches, transforms, center, slot)
+                    else:
+                        _showStopSign(ax, patches, transforms, center, slot)
+
     def show(self, labelIncomingLanes=False, showCurbArrows=False):
         """Render a schematic of the road network for debugging.
 
         If you call this function directly, you'll need to subsequently call
         `matplotlib.pyplot.show` to actually display the diagram.
+
+        Stop, yield, and all-way halts are drawn as a line across the lane.
+        A stop sign is a red octagon, a yield is a downward triangle, and a
+        traffic light is a box with three circles at the pole, not on the stop line.
 
         Args:
             labelIncomingLanes (bool): Whether to label the incoming lanes of
@@ -1832,3 +2001,4 @@ class Network:
                     x, y, _ = lane.centerline[-1]
                     plt.plot([x], [y], "*b")
                     plt.annotate(str(i), (x, y))
+        self._showHaltMarks(plt)
