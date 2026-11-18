@@ -995,7 +995,7 @@ class MeshRegion(Region):
         if len(intersection_data) == 0:
             return None
 
-        distances = numpy.linalg.norm(intersection_data - numpy.asarray(point))
+        distances = numpy.linalg.norm(intersection_data - numpy.asarray(point), axis=1)
         closest_point = intersection_data[numpy.argmin(distances)]
 
         return Vector(*closest_point)
@@ -3265,7 +3265,7 @@ class CircularRegion(PolygonalRegion):
     def distanceTo(self, point):
         point = toVector(point)
 
-        if point.z == 0:
+        if point.z == self.z:
             return max(0, point.distanceTo(self.center) - self.radius)
 
         return super().distanceTo(point)
