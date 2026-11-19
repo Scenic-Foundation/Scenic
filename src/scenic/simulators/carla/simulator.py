@@ -285,6 +285,9 @@ class CarlaSimulation(DrivingSimulation):
                 carla_sensor.listen(sensor.onData)
                 sensor.carla_sensor = carla_sensor
 
+                if hasattr(carla_sensor, "enable_for_ros"):
+                    carla_sensor.enable_for_ros()
+
         return carlaActor
 
     def executeActions(self, allActions):
@@ -350,7 +353,8 @@ class CarlaSimulation(DrivingSimulation):
             if obj.sensors:
                 for sensor in obj.sensors.values():
                     if sensor.carla_sensor is not None and sensor.carla_sensor.is_alive:
-                        sensor.carla_sensor.stop()
+                        if sensor.carla_sensor.is_listening():
+                            sensor.carla_sensor.stop()
                         sensor.carla_sensor.destroy()
             if obj.carlaActor is not None:
                 if isinstance(obj.carlaActor, carla.Vehicle):
