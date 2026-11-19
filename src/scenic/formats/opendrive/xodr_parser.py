@@ -1357,7 +1357,7 @@ class Road:
         heading = last_curve.heading_at(last_curve.length)
         return (x, y, z), heading
 
-    def st_to_xyz(self, s, t, zOffset):
+    def st_to_xyz(self, s, t, zOffset=0):
         (x_ref, y_ref, z_ref), heading = self.xyz_heading_at_s(s)
         x = x_ref - t * math.sin(heading)
         y = y_ref + t * math.cos(heading)
@@ -2431,7 +2431,7 @@ class RoadMap:
                         startSidewalk.crossings += (crossing,)
                 else:
                     warn(
-                        f"Could not link startSidewalk to crossing {crossing.uid} with parent {crossing.parent.uid}"
+                        f"Could not link startSidewalk of crossing {crossing.uid} with parent {crossing.parent.uid}"
                     )
 
             if not crossing.endSidewalk:
@@ -2441,7 +2441,7 @@ class RoadMap:
                         endSidewalk.crossings += (crossing,)
                 else:
                     warn(
-                        f"Could not link endSidewalk to crossing {crossing.uid} with parent {crossing.parent.uid}"
+                        f"Could not link endSidewalk of crossing {crossing.uid} with parent {crossing.parent.uid}"
                     )
 
         def combine(regions):
