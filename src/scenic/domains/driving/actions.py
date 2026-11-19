@@ -44,21 +44,48 @@ class Steers:
         raise NotImplementedError
 
 
-class Walks:
+class Travels:
+    """Mixin protocol for agents which can travel with a given direction and speed.
+
+    We provide a simplistic implementation which directly sets the velocity of the agent.
+    This implementation needs to be explicitly opted-into, since simulators may provide a
+    more sophisticated API for moving such agents.
+    """
+
+    def setTravelDirection(self, heading):
+        velocity = Vector(0, self.speed).rotatedBy(heading)
+        self.setVelocity(velocity)
+
+    def setTravelSpeed(self, speed):
+        velocity = speed * self.velocity.normalized()
+        self.setVelocity(velocity)
+
+
+class Walks(Travels):
     """Mixin protocol for agents which can walk with a given direction and speed.
+
+    This is the pedestrian-facing API used by scenarios and simulator interfaces.
+    It is also a backwards-compatible alias layer for `Travels`, so generic
+    direction and speed actions can control walkers.
 
     We provide a simplistic implementation which directly sets the velocity of the agent.
     This implementation needs to be explicitly opted-into, since simulators may provide a
     more sophisticated API that properly animates pedestrians.
     """
 
+    # Legacy pedestrian API (simulator backends often override these).
     def setWalkingDirection(self, heading):
-        velocity = Vector(0, self.speed).rotatedBy(heading)
-        self.setVelocity(velocity)
+        super().setTravelDirection(heading)
 
     def setWalkingSpeed(self, speed):
-        velocity = speed * self.velocity.normalized()
-        self.setVelocity(velocity)
+        super().setTravelSpeed(speed)
+
+    # Bridge: ensure Travel actions on walkers go through walking overrides.
+    def setTravelDirection(self, heading):
+        self.setWalkingDirection(heading)
+
+    def setTravelSpeed(self, speed):
+        self.setWalkingSpeed(speed)
 
 
 ## Actions available to all agents
@@ -260,6 +287,39 @@ class RegulatedControlAction(SteeringAction):
         obj.setSteering(self.steer)
 
 
+## Actions available to agents that travel by direction and speed
+
+
+class TravelAction(Action):
+    """Abstract class for actions usable by agents which can travel.
+
+    Such agents must implement the `Travels` protocol.
+    """
+
+    def canBeTakenBy(self, agent):
+        return isinstance(agent, Travels)
+
+
+class SetTravelDirectionAction(TravelAction):
+    """Set the travel direction."""
+
+    def __init__(self, heading):
+        self.heading = heading
+
+    def applyTo(self, obj, sim):
+        obj.setTravelDirection(self.heading)
+
+
+class SetTravelSpeedAction(TravelAction):
+    """Set the travel speed."""
+
+    def __init__(self, speed):
+        self.speed = speed
+
+    def applyTo(self, obj, sim):
+        obj.setTravelSpeed(self.speed)
+
+
 ## Actions available to agents that can walk
 
 
@@ -280,7 +340,7 @@ class SetWalkingDirectionAction(WalkingAction):
         self.heading = heading
 
     def applyTo(self, obj, sim):
-        obj.setWalkingDirection(self.heading)
+        obj.setTravelDirection(self.heading)
 
 
 class SetWalkingSpeedAction(WalkingAction):
@@ -290,4 +350,4 @@ class SetWalkingSpeedAction(WalkingAction):
         self.speed = speed
 
     def applyTo(self, obj, sim):
-        obj.setWalkingSpeed(self.speed)
+        obj.setTravelSpeed(self.speed)
