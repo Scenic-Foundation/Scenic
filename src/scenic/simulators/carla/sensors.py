@@ -72,3 +72,72 @@ class CarlaSSSensor(CarlaVisionSensor):
             array = array[:, :, 2]  # Take only R
 
         return array.copy()
+
+
+class CarlaCollisionSensor(CallbackSensor):
+    """Collision sensor that detects collisions with other actors/objects."""
+
+    blueprint = "sensor.other.collision"
+
+    def __init__(self):
+        super().__init__()
+        self.collision_history = []
+        self.has_collision = False
+        self.last_collision_intensity = 0.0
+        self.last_collision_data = None
+        self.frame = 0
+        self._initialized = False
+        self._is_event_based = True
+
+        self.offset = (0, 0, 0)
+        self.rotation = (0, 0, 0)
+        self.attributes = {}
+        self.convert = None
+        self.carla_sensor = None
+
+    def onData(self, event):
+        self.frame = event.frame
+        self._initialized = True
+
+        impulse = event.normal_impulse
+        intensity = np.sqrt(impulse.x**2 + impulse.y**2 + impulse.z**2)
+
+        collision_info = {
+            "frame": event.frame,
+            "timestamp": event.timestamp,
+            "intensity": intensity,
+            "other_actor": event.other_actor.type_id if event.other_actor else None,
+            "impulse": (impulse.x, impulse.y, impulse.z),
+        }
+
+        self.collision_history.append(collision_info)
+        self.has_collision = True
+        self.last_collision_intensity = intensity
+        self.last_collision_data = collision_info
+
+    def process(self, data):
+        return self.last_collision_data
+
+    def getObservation(self):
+        return {
+            "has_collision": self.has_collision,
+            "last_collision_intensity": self.last_collision_intensity,
+            "last_collision_data": self.last_collision_data,
+            "collision_history": self.collision_history,
+        }
+
+    def updateFrame(self, frame):
+        """Advance frame number for event-based sensors that didn't fire this tick."""
+        if not self._initialized:
+            self._initialized = True
+        if self.frame < frame:
+            self.frame = frame
+
+    def reset(self):
+        """Reset collision state between simulations."""
+        self.collision_history = []
+        self.has_collision = False
+        self.last_collision_intensity = 0.0
+        self.last_collision_data = None
+        self.frame = 0
+        self._initialized = False

@@ -103,6 +103,25 @@ class HUD(object):
             "Height:  % 18.0f m" % t.location.z,
         ]
 
+        collision = (
+            getattr(ego, "sensors", {}).get("collision")
+            if hasattr(ego, "sensors")
+            else None
+        )
+        if collision is not None:
+            if getattr(collision, "has_collision", False):
+                intensity = getattr(collision, "last_collision_intensity", 0.0)
+                data = getattr(collision, "last_collision_data", None)
+                other = data.get("other_actor") if isinstance(data, dict) else None
+                value = (
+                    f"hit {other} ({intensity:.0f})"
+                    if other
+                    else f"detected ({intensity:.0f})"
+                )
+                self._info_text.append(("Collision:", value, (255, 80, 80)))
+            else:
+                self._info_text.append(("Collision:", "none", (80, 220, 80)))
+
         try:
             _control_text = [
                 "",
@@ -158,6 +177,15 @@ class HUD(object):
                 item = None
                 v_offset += 18
             elif isinstance(item, tuple):
+                if len(item) == 3 and isinstance(item[2], tuple):
+                    label_surface = self._font_mono.render(item[0], True, (255, 255, 255))
+                    display.blit(label_surface, (8, v_offset))
+                    value_surface = self._font_mono.render(
+                        " " + str(item[1]), True, item[2]
+                    )
+                    display.blit(value_surface, (8 + label_surface.get_width(), v_offset))
+                    v_offset += 18
+                    continue
                 if isinstance(item[1], bool):
                     rect = pygame.Rect((bar_h_offset, v_offset + 8), (6, 6))
                     pygame.draw.rect(display, (255, 255, 255), rect, 0 if item[1] else 1)

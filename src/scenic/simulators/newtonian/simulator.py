@@ -10,6 +10,8 @@ import time
 
 from PIL import Image
 import numpy as np
+import shapely.affinity
+import shapely.geometry
 
 import scenic.core.errors as errors  # isort: skip
 
@@ -59,16 +61,30 @@ class NewtonianSimulator(DrivingSimulator):
         when not otherwise specified is still 0.1 seconds.
     """
 
-    def __init__(self, network=None, render=False, debug_render=False, export_gif=False):
+    def __init__(
+        self,
+        network=None,
+        render=False,
+        debug_render=False,
+        export_gif=False,
+        enable_crash_physics=True,
+    ):
         super().__init__()
         self.export_gif = export_gif
         self.render = render
         self.debug_render = debug_render
         self.network = network
+        self.enable_crash_physics = enable_crash_physics
 
     def createSimulation(self, scene, **kwargs):
         simulation = NewtonianSimulation(
-            scene, self.network, self.render, self.export_gif, self.debug_render, **kwargs
+            scene,
+            self.network,
+            self.render,
+            self.export_gif,
+            self.debug_render,
+            self.enable_crash_physics,
+            **kwargs,
         )
         if self.export_gif and self.render:
             simulation.generate_gif("simulation.gif")
@@ -79,7 +95,15 @@ class NewtonianSimulation(DrivingSimulation):
     """Implementation of `Simulation` for the Newtonian simulator."""
 
     def __init__(
-        self, scene, network, render, export_gif, debug_render, timestep, **kwargs
+        self,
+        scene,
+        network,
+        render,
+        export_gif,
+        debug_render,
+        enable_crash_physics,
+        timestep,
+        **kwargs,
     ):
         self.export_gif = export_gif
         self.render = render
@@ -87,6 +111,7 @@ class NewtonianSimulation(DrivingSimulation):
         self.screen = None
         self.frames = []
         self.debug_render = debug_render
+        self.enable_crash_physics = enable_crash_physics
 
         if timestep is None:
             timestep = 0.1
@@ -190,11 +215,199 @@ class NewtonianSimulation(DrivingSimulation):
         if hasattr(obj, "elevation"):
             obj.elevation = 0.0
 
+        # Default mass for crash physics (typical car ~1500 kg, pedestrian ~70 kg).
+        if not hasattr(obj, "mass"):
+            obj.mass = 1500 if getattr(obj, "isCar", False) else 70
+
+        obj.crashed = False
+        obj.crash_angular_velocity = 0.0
+
     def isOnScreen(self, x, y):
         return self.min_x <= x <= self.max_x and self.min_y <= y <= self.max_y
 
+    def handle_collisions(self):
+        """Detect and resolve all pairwise collisions in the current timestep."""
+        for i, obj1 in enumerate(self.objects):
+            for obj2 in self.objects[i + 1 :]:
+                if self.detect_collision(obj1, obj2):
+                    self.resolve_collision(obj1, obj2)
+
+    def get_object_polygon(self, obj):
+        return shapely.geometry.Polygon(obj._corners2D)
+
+    def detect_collision(self, obj1, obj2):
+        return self.get_object_polygon(obj1).intersects(self.get_object_polygon(obj2))
+
+    def resolve_collision(self, obj1, obj2, restitution=0.5):
+        """Apply 2D collision response between two objects.
+
+        Computes the collision normal via SAT, applies an impulse along it, and
+        positionally separates the objects to remove penetration.
+        """
+        poly1 = self.get_object_polygon(obj1)
+        poly2 = self.get_object_polygon(obj2)
+        if not poly1.intersects(poly2):
+            return
+
+        collision_normal, penetration_depth = self.compute_collision_normal(
+            poly1, poly2, obj1, obj2
+        )
+        if collision_normal is None:
+            return
+
+        nx, ny = collision_normal.x, collision_normal.y
+        rel_vel = obj2.velocity - obj1.velocity
+        vel_along_normal = rel_vel.x * nx + rel_vel.y * ny
+
+        # Already separating; no impulse needed.
+        if vel_along_normal > 0:
+            return
+
+        impulse_scalar = -(1 + restitution) * vel_along_normal
+        impulse_scalar /= 1 / obj1.mass + 1 / obj2.mass
+        impulse = Vector(impulse_scalar * nx, impulse_scalar * ny)
+        obj1.velocity -= impulse / obj1.mass
+        obj2.velocity += impulse / obj2.mass
+
+        if self.enable_crash_physics:
+            self.apply_crash_physics(obj1, obj2, collision_normal, abs(vel_along_normal))
+
+        # Split the penetration evenly between the two objects.
+        separation_factor = 0.5
+        obj1.position -= collision_normal * penetration_depth * separation_factor
+        obj2.position += collision_normal * penetration_depth * separation_factor
+
+    def apply_crash_physics(self, obj1, obj2, collision_normal, impact_speed):
+        """Mark objects crashed and apply post-impact dynamics for cars/pedestrians."""
+        CAR_CRASH_THRESHOLD = 3.0  # m/s (~10 km/h) for car-car crashes
+        PEDESTRIAN_HIT_THRESHOLD = 1.5  # m/s (~5 km/h) for car-pedestrian hits
+
+        is_car1 = getattr(obj1, "isCar", False)
+        is_car2 = getattr(obj2, "isCar", False)
+        is_pedestrian1 = (
+            not is_car1 and hasattr(obj1, "control") and "speed" in obj1.control
+        )
+        is_pedestrian2 = (
+            not is_car2 and hasattr(obj2, "control") and "speed" in obj2.control
+        )
+
+        # Car-pedestrian collision
+        if (is_car1 and is_pedestrian2) or (is_car2 and is_pedestrian1):
+            if impact_speed < PEDESTRIAN_HIT_THRESHOLD:
+                return
+            pedestrian = obj2 if is_pedestrian2 else obj1
+            car = obj1 if is_car1 else obj2
+
+            hit_severity = min(impact_speed / 15.0, 1.0)
+            pedestrian.crashed = True
+            pedestrian.velocity = car.velocity * (hit_severity * 0.3)
+            pedestrian.crash_angular_velocity = 0.0
+
+            car.crashed = True
+            car.crash_angular_velocity = 0.0
+            car.velocity *= 1.0 - hit_severity * 0.5
+            return
+
+        # Car-car collision
+        if impact_speed < CAR_CRASH_THRESHOLD:
+            return
+
+        if is_car1:
+            crash_severity = min(impact_speed / 20.0, 1.0)
+            obj1.crashed = True
+            obj1.crash_angular_velocity = (
+                (np.random.random() - 0.5) * crash_severity * 3.0
+            )
+            obj1.velocity *= 1.0 - crash_severity * 0.7
+        if is_car2:
+            crash_severity = min(impact_speed / 20.0, 1.0)
+            obj2.crashed = True
+            obj2.crash_angular_velocity = (
+                (np.random.random() - 0.5) * crash_severity * 3.0
+            )
+            obj2.velocity *= 1.0 - crash_severity * 0.7
+
+    def compute_collision_normal(self, poly1, poly2, obj1, obj2):
+        """Compute collision normal + penetration depth via SAT.
+
+        Returns (Vector, float) or (None, 0) if the objects aren't actually overlapping.
+        Falls back to a center-to-center direction if the SAT search yields nothing.
+        """
+        try:
+            intersection = poly1.intersection(poly2)
+            if intersection.is_empty:
+                return None, 0
+
+            min_overlap = float("inf")
+            best_normal = None
+            coords1 = list(poly1.exterior.coords)
+            coords2 = list(poly2.exterior.coords)
+
+            for coords in (coords1, coords2):
+                for i in range(len(coords) - 1):
+                    edge_x = coords[i + 1][0] - coords[i][0]
+                    edge_y = coords[i + 1][1] - coords[i][1]
+                    edge_len = math.hypot(edge_x, edge_y)
+                    if edge_len < 0.001:
+                        continue
+                    normal_x = -edge_y / edge_len
+                    normal_y = edge_x / edge_len
+
+                    proj1 = [c[0] * normal_x + c[1] * normal_y for c in coords1[:-1]]
+                    proj2 = [c[0] * normal_x + c[1] * normal_y for c in coords2[:-1]]
+                    overlap = min(max(proj1), max(proj2)) - max(min(proj1), min(proj2))
+                    if 0 < overlap < min_overlap:
+                        min_overlap = overlap
+                        c1 = obj1.position.x * normal_x + obj1.position.y * normal_y
+                        c2 = obj2.position.x * normal_x + obj2.position.y * normal_y
+                        if c2 > c1:
+                            best_normal = Vector(normal_x, normal_y)
+                        else:
+                            best_normal = Vector(-normal_x, -normal_y)
+
+            if best_normal is None:
+                dx = obj2.position.x - obj1.position.x
+                dy = obj2.position.y - obj1.position.y
+                distance = math.hypot(dx, dy)
+                if distance < 0.001:
+                    return None, 0
+                best_normal = Vector(dx / distance, dy / distance)
+                min_overlap = intersection.area**0.5
+            return best_normal, min_overlap
+        except Exception:
+            dx = obj2.position.x - obj1.position.x
+            dy = obj2.position.y - obj1.position.y
+            distance = math.hypot(dx, dy)
+            if distance < 0.001:
+                return None, 0
+            normal = Vector(dx / distance, dy / distance)
+            penetration = min(obj1.width, obj1.height, obj2.width, obj2.height) * 0.1
+            return normal, penetration
+
     def step(self):
         for obj in self.objects:
+            # Crashed cars: apply heavy friction and uncontrolled spin, ignore inputs.
+            if obj.crashed and getattr(obj, "isCar", False):
+                obj.velocity *= 0.92
+                obj.angularSpeed = obj.crash_angular_velocity
+                obj.crash_angular_velocity *= 0.95
+                obj.throttle = 0
+                obj.brake = 1.0
+                obj.steer = 0
+                obj.position += obj.velocity * self.timestep
+                obj.heading += obj.angularSpeed * self.timestep
+                obj.speed = obj.velocity.norm()
+                continue
+
+            # Crashed pedestrians: freeze controls and decelerate.
+            if obj.crashed and hasattr(obj, "control") and "speed" in obj.control:
+                obj.velocity *= 0.85
+                obj.control["speed"] = 0
+                obj.control["heading"] = obj.heading
+                obj.position += obj.velocity * self.timestep
+                obj.speed = obj.velocity.norm()
+                continue
+
             current_speed = obj.velocity.norm()
             # 1) Pedestrians using walking controls (SetWalkingSpeed/Direction)
             if (
@@ -249,6 +462,9 @@ class NewtonianSimulation(DrivingSimulation):
             # 4) Integrate motion for all
             obj.position += obj.velocity * self.timestep
             obj.heading += obj.angularSpeed * self.timestep
+
+        # 5) Detect and resolve any pairwise collisions for this tick.
+        self.handle_collisions()
 
         if self.render:
             # Handle closing out pygame screen

@@ -51,6 +51,7 @@ from scenic.simulators.utils.colors import Color
 # Sensor imports
 from scenic.simulators.carla.sensors import CarlaRGBSensor as RGBSensor
 from scenic.simulators.carla.sensors import CarlaSSSensor as SSSensor
+from scenic.simulators.carla.sensors import CarlaCollisionSensor as CollisionSensor
 
 try:
     from scenic.simulators.carla.simulator import CarlaSimulator    # for use in scenarios

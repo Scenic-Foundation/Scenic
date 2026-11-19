@@ -19,6 +19,7 @@ import pygame
 from scenic.core.simulators import SimulationCreationError
 from scenic.domains.driving.simulators import DrivingSimulation, DrivingSimulator
 from scenic.simulators.carla.blueprints import oldBlueprintNames
+from scenic.simulators.carla.sensors import CarlaCollisionSensor
 import scenic.simulators.carla.utils.utils as utils
 import scenic.simulators.carla.utils.visuals as visuals
 from scenic.syntax.veneer import verbosePrint
@@ -250,6 +251,11 @@ class CarlaSimulation(DrivingSimulation):
                 )
             obj.carlaController = controller
 
+        # Auto-attach a collision sensor to the ego so users can check
+        # ego.sensors['collision'].has_collision without explicit declaration.
+        if obj is self.scene.egoObject and "collision" not in obj.sensors:
+            obj.sensors["collision"] = CarlaCollisionSensor()
+
         # Adding sensors if available
         if obj.sensors:
             for sensor_key, sensor in obj.sensors.items():
@@ -301,12 +307,18 @@ class CarlaSimulation(DrivingSimulation):
         # Run simulation for one timestep
         self.current_frame = self.world.tick()
 
-        # Wait for sensors to get updates
+        # Wait for sensors to deliver this frame's data. Event-based sensors
+        # (e.g. collision) don't fire every tick, so just bump their frame
+        # number rather than blocking on it.
         for obj in self.objects:
             if obj.sensors:
                 for sensor in obj.sensors.values():
-                    while sensor.frame != self.current_frame:
-                        pass
+                    if getattr(sensor, "_is_event_based", False):
+                        if hasattr(sensor, "updateFrame"):
+                            sensor.updateFrame(self.current_frame)
+                    else:
+                        while sensor.frame != self.current_frame:
+                            pass
 
         # Render simulation
         if self.render:
@@ -352,6 +364,8 @@ class CarlaSimulation(DrivingSimulation):
                     if sensor.carla_sensor is not None and sensor.carla_sensor.is_alive:
                         sensor.carla_sensor.stop()
                         sensor.carla_sensor.destroy()
+                    if hasattr(sensor, "reset"):
+                        sensor.reset()
             if obj.carlaActor is not None:
                 if isinstance(obj.carlaActor, carla.Vehicle):
                     obj.carlaActor.set_autopilot(False, self.tm.get_port())
