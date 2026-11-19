@@ -33,12 +33,12 @@ In detail, a single time step of a dynamic simulation is executed according to t
 	   If the block executes a :keyword:`require` statement with a false condition, reject the simulation.
 	   If it executes :keyword:`terminate` or :keyword:`terminate simulation`, or finishes executing, go to step (e) below to stop the scenario.
 
-	e. If the scenario is stopping for one of the reasons above, first recursively stop any sub-scenarios it is running, then revert the effects of any :keyword:`override` statements it executed.
+	e. If the scenario is stopping for one of the reasons above, save the values of any :keyword:`record final` statements in the scenario, recursively stop any sub-scenarios it is running, then revert the effects of any :keyword:`override` statements it executed.
 	   Next, check if any of its :term:`temporal requirements` were not satisfied: if so, reject the simulation.
 	   Otherwise, the scenario returns to its parent scenario if it was invoked using :keyword:`do`; if it was the top-level scenario, or if it executed :keyword:`terminate simulation`, we set a flag indicating the top-level scenario has terminated.
 	   (We do not terminate immediately since we still need to check monitors in the next step.)
 
-2. Save the values of all :keyword:`record` statements, as well as :keyword:`record initial` statements if it is time step 0.
+2. Save the values of all :keyword:`record` statements in currently-running scenarios, as well as :keyword:`record initial` statements for scenarios which have just started.
 
 3. Run each :term:`monitor` instantiated in the currently-running scenarios for one time step (i.e. resume it until it executes :keyword:`wait`).
    If it executes a :keyword:`require` statement with a false condition, reject the simulation.
@@ -66,8 +66,7 @@ In detail, a single time step of a dynamic simulation is executed according to t
 
 9. Update every :term:`dynamic property` of every object to its current value in the simulator.
 
-10. If the simulation is stopping for one of the reasons above, first check if any of the :term:`temporal requirements` of any remaining scenarios were not satisfied: if so, reject the simulation.
-    Otherwise, save the values of any :keyword:`record final` statements.
+10. If the simulation is stopping for one of the reasons above, stop any remaining scenarios as in step (1e) above (including checking :term:`temporal requirements` and saving the values of :keyword:`record final` statements).
 
 
 .. rubric:: Footnotes

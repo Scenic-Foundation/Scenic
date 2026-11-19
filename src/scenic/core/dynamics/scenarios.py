@@ -88,6 +88,7 @@ class DynamicScenario(Invocable):
 
         self._timeLimitInSteps = None  # computed at simulation time
         self._elapsedTime = 0
+        self._recordedTime = None
         self._eventuallySatisfied = None
         self._overrides = {}
 
@@ -215,10 +216,13 @@ class DynamicScenario(Invocable):
 
         # Prepare recorders
         simName = veneer.currentSimulation.name
+        currentTime = veneer.currentSimulation.currentTime
         globalParams = types.MappingProxyType(veneer._globalParameters)
         for req in self._recordedExprs:
             if (recConfig := req.recConfig) and (recorder := recConfig.recorder):
-                recorder.beginRecording(recConfig, simName, timestep, globalParams)
+                recorder.beginRecording(
+                    recConfig, simName, timestep, globalParams, currentTime
+                )
 
     def _step(self):
         """Execute the (already-started) scenario for one time step.
@@ -294,6 +298,15 @@ class DynamicScenario(Invocable):
 
         assert self._isRunning
 
+        if not quiet:
+            # Record finally-recorded values.
+            sim = veneer.currentSimulation
+            for rec in self._recordedFinalExprs:
+                sim._record(rec.name, rec.evaluate())
+
+            # Record ordinary `record` statements too if they haven't been already.
+            self._recordTimeSeries()
+
         # Stop monitors and subscenarios.
         for monitor in self._monitors:
             if monitor._isRunning:
@@ -356,28 +369,37 @@ class DynamicScenario(Invocable):
             # Check if any sub-scenarios stopped during action execution
             self._subScenarios = [sub for sub in self._subScenarios if sub._isRunning]
 
-    def _evaluateRecordedExprs(self, ty, step):
-        if ty is RequirementType.record:
-            place = "_recordedExprs"
-        elif ty is RequirementType.recordInitial:
-            place = "_recordedInitialExprs"
-        elif ty is RequirementType.recordFinal:
-            place = "_recordedFinalExprs"
-        else:
-            assert False, "invalid record type requested"
-        return self._evaluateRecordedExprsAt(place, step)
+    def _updateRecords(self):
+        from scenic.syntax.veneer import currentSimulation
 
-    def _evaluateRecordedExprsAt(self, place, step):
-        values = {}
-        for rec in getattr(self, place):
-            value = rec.evaluate()
-            values[rec.name] = value
-            if (recConfig := rec.recConfig) and (recorder := recConfig.recorder):
-                recorder._record(value, step)
+        # _step() was called earlier this time step, so at time step 0 we will
+        # already have _elapsedTime == 1
+        assert self._elapsedTime >= 1
+        if self._elapsedTime == 1:
+            for rec in self._recordedInitialExprs:
+                currentSimulation._record(rec.name, rec.evaluate())
+
+        self._recordTimeSeries()
+
         for sub in self._subScenarios:
-            subvals = sub._evaluateRecordedExprsAt(place, step)
-            values.update(subvals)
-        return values
+            sub._updateRecords()
+
+    def _recordTimeSeries(self):
+        from scenic.syntax.veneer import currentSimulation
+
+        currentTime = currentSimulation.currentTime
+        if self._recordedTime == currentTime:
+            # This time step was already recorded (e.g. the scenario was terminated
+            # by a behavior after the current state was recorded).
+            return
+
+        for rec in self._recordedExprs:
+            value = rec.evaluate()
+            currentSimulation._recordTimeSeries(rec.name, value)
+            if (recConfig := rec.recConfig) and (recorder := recConfig.recorder):
+                recorder._record(value, currentTime)
+
+        self._recordedTime = currentTime
 
     def _runMonitors(self):
         terminationReason = None

@@ -572,6 +572,24 @@ def test_subscenario_require_eventually():
     assert result is None
 
 
+def test_subscenario_require_eventually_2():
+    """Variant of the above test using `terminate when` instead of `terminate after`."""
+    scenario = compileScenic(
+        """
+        scenario Main():
+            compose:
+                do Sub()
+                wait
+        scenario Sub():
+            ego = new Object
+            require eventually simulation().currentTime == 2
+            terminate when simulation().currentTime == 1
+        """
+    )
+    result = sampleResultOnce(scenario, maxSteps=2)
+    assert result is None
+
+
 def test_subscenario_require_monitor():
     """Test that monitors invoked in subscenarios terminate with the subscenario."""
     scenario = compileScenic(
@@ -595,8 +613,42 @@ def test_subscenario_require_monitor():
     assert len(result.trajectory) == 4
 
 
+def test_subscenario_record():
+    scenario = compileScenic(
+        """
+        scenario Main():
+            setup:
+                record initial simulation().currentTime as mainInitial
+                record final simulation().currentTime as mainFinal
+                record simulation().currentTime as mainTime
+            compose:
+                wait for 2 steps
+                do Sub()
+                wait
+        scenario Sub():
+            ego = new Object
+            record initial -simulation().currentTime as subInitial
+            record final -simulation().currentTime as subFinal
+            record -simulation().currentTime as subNegTime
+            terminate after 2 steps
+        """
+    )
+    result = sampleResult(scenario, maxSteps=5)
+    records = result.records
+    assert records["mainInitial"] == 0
+    assert records["mainFinal"] == 5
+    assert tuple(records["mainTime"]) == ((0, 0), (1, 1), (2, 2), (3, 3), (4, 4), (5, 5))
+    assert records["subInitial"] == -2
+    assert records["subFinal"] == -4
+    assert tuple(records["subNegTime"]) == ((2, -2), (3, -3), (4, -4))
+
+
 def test_subscenario_terminate_when():
-    """Test that 'terminate when' and 'require' are properly handled."""
+    """Test that 'terminate when' is properly handled.
+
+    In particular, this catches a bug where `terminate when` in a subscenario was
+    interpreted as defining a requirement instead of a termination condition.
+    """
     scenario = compileScenic(
         """
         scenario Main():
@@ -605,12 +657,12 @@ def test_subscenario_terminate_when():
                 wait
         scenario Sub():
             ego = new Object
-            require eventually simulation().currentTime == 2
             terminate when simulation().currentTime == 1
         """
     )
-    result = sampleResultOnce(scenario, maxSteps=2)
-    assert result is None
+    result = sampleResultOnce(scenario, maxSteps=3)
+    assert result is not None
+    assert len(result.trajectory) == 3
 
 
 def test_subscenario_terminate_with_parent():

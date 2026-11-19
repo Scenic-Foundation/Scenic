@@ -379,17 +379,10 @@ class Simulation(abc.ABC):
             # Run the simulation.
             terminationType, terminationReason = self._run(dynamicScenario, maxSteps)
 
-            # Stop all remaining scenarios.
-            # (and reject if some 'require eventually' condition was never satisfied)
+            # Stop all remaining scenarios (and handle their `record final` statements;
+            # also reject if some `require eventually` condition was never satisfied).
             for scenario in tuple(reversed(veneer.runningScenarios)):
                 scenario._stop("simulation terminated")
-
-            # Record finally-recorded values.
-            values = dynamicScenario._evaluateRecordedExprs(
-                RequirementType.recordFinal, self.currentTime
-            )
-            for name, val in values.items():
-                self.records[name] = val
 
             # Package up simulation results into a compact object.
             result = SimulationResult(
@@ -442,7 +435,7 @@ class Simulation(abc.ABC):
                 )
 
             # Record current state of the simulation
-            self.recordCurrentState()
+            self._recordCurrentState()
 
             # Run monitors
             newReason = dynamicScenario._runMonitors()
@@ -596,25 +589,18 @@ class Simulation(abc.ABC):
         """
         raise NotImplementedError
 
-    def recordCurrentState(self):
-        dynamicScenario = self.scene.dynamicScenario
-        records = self.records
-
-        # Record initially-recorded values
-        step = self.currentTime
-        if step == 0:
-            values = dynamicScenario._evaluateRecordedExprs(
-                RequirementType.recordInitial, step
-            )
-            for name, val in values.items():
-                records[name] = val
-
-        # Record time-series values
-        values = dynamicScenario._evaluateRecordedExprs(RequirementType.record, step)
-        for name, val in values.items():
-            records[name].append((self.currentTime, val))
+    def _recordCurrentState(self):
+        # Record values of `record initial` and `record` statements.
+        # (calls _record and _recordTimeSeries below)
+        self.scene.dynamicScenario._updateRecords()
 
         self.trajectory.append(self.currentState())
+
+    def _record(self, name, value):
+        self.records[name] = value
+
+    def _recordTimeSeries(self, name, value):
+        self.records[name].append((self.currentTime, value))
 
     def replayCanContinue(self):
         if not self.replaying:

@@ -552,31 +552,27 @@ def executeInRequirement(scenario, boundEgo, values):
     assert activity == 0
     assert not evaluatingRequirement
     evaluatingRequirement = True
-    if currentScenario is None:
-        currentScenario = scenario
-        clearScenario = True
-    else:
-        assert currentScenario is scenario
-        clearScenario = False
-    oldEgo = currentScenario._ego
-    oldObjects = currentScenario._objects
 
-    currentScenario._objects = tuple(values[obj] for obj in currentScenario.objects)
+    with executeInScenario(scenario):
+        oldEgo = scenario._ego
+        oldObjects = scenario._objects
 
-    if boundEgo:
-        currentScenario._ego = boundEgo
-    try:
-        yield
-    except RandomControlFlowError as e:
-        # Such errors should not be possible inside a requirement, since all values
-        # should have already been sampled: something's gone wrong with our rebinding.
-        raise RuntimeError("internal error: requirement dependency not sampled") from e
-    finally:
-        evaluatingRequirement = False
-        currentScenario._ego = oldEgo
-        currentScenario._objects = oldObjects
-        if clearScenario:
-            currentScenario = None
+        scenario._objects = tuple(values[obj] for obj in scenario.objects)
+
+        if boundEgo:
+            scenario._ego = boundEgo
+        try:
+            yield
+        except RandomControlFlowError as e:
+            # Such errors should not be possible inside a requirement, since all values
+            # should have already been sampled: something's gone wrong with our rebinding.
+            raise AssertionError(
+                "internal error: requirement dependency not sampled"
+            ) from e
+        finally:
+            evaluatingRequirement = False
+            scenario._ego = oldEgo
+            scenario._objects = oldObjects
 
 
 # Dynamic scenarios
@@ -858,22 +854,6 @@ def record_final(reqID, value, line, name):
     makeRequirement(requirements.RequirementType.recordFinal, reqID, value, line, name)
 
 
-def require_always(reqID, req, line, name):
-    """Function implementing the 'require always' statement."""
-    if not name:
-        name = f"requirement on line {line}"
-    makeRequirement(requirements.RequirementType.requireAlways, reqID, req, line, name)
-
-
-def require_eventually(reqID, req, line, name):
-    """Function implementing the 'require eventually' statement."""
-    if not name:
-        name = f"requirement on line {line}"
-    makeRequirement(
-        requirements.RequirementType.requireEventually, reqID, req, line, name
-    )
-
-
 def terminate_when(reqID, req, line, name):
     """Function implementing the 'terminate when' statement."""
     if not name:
@@ -895,9 +875,7 @@ def makeRequirement(ty, reqID, req, line, name, recConfig=None):
         raise InvalidScenarioError(f'tried to use "{ty.value}" inside a requirement')
     elif currentBehavior is not None:
         raise InvalidScenarioError(f'"{ty.value}" inside a behavior on line {line}')
-    elif currentSimulation is not None:
-        currentScenario._addDynamicRequirement(ty, req, line, name)
-    else:  # requirement being defined at compile time
+    else:
         currentScenario._addRequirement(ty, reqID, req, line, name, 1, recConfig)
 
 
