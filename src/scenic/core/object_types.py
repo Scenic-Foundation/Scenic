@@ -257,7 +257,6 @@ class Constructible(Samplable):
 
         # Possibly register this object
         if register:
-            breakpoint()
             obj._register()
 
         return obj

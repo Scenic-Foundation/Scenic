@@ -438,7 +438,7 @@ def registerInstance(inst):
 
     This is called by the Point/OrientedPoint constructor.
     """
-    if currentScenario:
+    if activity and currentScenario:
         assert isinstance(inst, Constructible)
         currentScenario._registerInstance(inst)
 
@@ -452,7 +452,7 @@ def registerObject(obj):
         raise InvalidScenarioError("tried to create an object inside a requirement")
     elif currentBehavior is not None:
         raise InvalidScenarioError("tried to create an object inside a behavior")
-    elif activity > 0 or currentScenario:
+    elif activity or currentScenario:
         assert not evaluatingRequirement
         assert isinstance(obj, Object)
         if currentScenario and currentScenario._isRunning:
