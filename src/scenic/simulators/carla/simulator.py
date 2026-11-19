@@ -63,6 +63,9 @@ class CarlaSimulator(DrivingSimulator):
 
         # Set to synchronous with fixed timestep
         settings = self.world.get_settings()
+        settings.substepping = True
+        settings.max_substep_delta_time = 0.01
+        settings.max_substeps = 10
         settings.synchronous_mode = True
         settings.fixed_delta_seconds = timestep  # NOTE: Should not exceed 0.1
         self.world.apply_settings(settings)
@@ -79,6 +82,8 @@ class CarlaSimulator(DrivingSimulator):
                 "set timestep when creating the CarlaSimulator instead"
             )
 
+        self._cleanupWorld()
+
         self.scenario_number += 1
         return CarlaSimulation(
             scene,
@@ -90,6 +95,31 @@ class CarlaSimulator(DrivingSimulator):
             timestep=self.timestep,
             **kwargs,
         )
+
+    def _cleanupWorld(self):
+        """Destroy any actors left over in the CARLA world from a prior run."""
+        verbosePrint("Cleaning up existing actors in CARLA world...")
+        actor_list = self.world.get_actors()
+
+        for actor in actor_list.filter("walker.*"):
+            if actor.is_alive:
+                actor.destroy()
+
+        for actor in actor_list.filter("controller.ai.walker"):
+            if actor.is_alive:
+                actor.destroy()
+
+        for actor in actor_list.filter("vehicle.*"):
+            if actor.is_alive:
+                actor.set_autopilot(False, self.tm.get_port())
+                actor.destroy()
+
+        for actor in actor_list.filter("sensor.*"):
+            if actor.is_alive:
+                actor.destroy()
+
+        self.world.tick()
+        verbosePrint("Cleanup complete.")
 
     def destroy(self):
         super().destroy()
@@ -135,6 +165,7 @@ class CarlaSimulation(DrivingSimulation):
                 self.displayDim, pygame.HWSURFACE | pygame.DOUBLEBUF
             )
             self.cameraManager = None
+            self.world.on_tick(self.hud.on_world_tick)
 
         if self.record:
             if not os.path.exists(self.record):
@@ -301,6 +332,9 @@ class CarlaSimulation(DrivingSimulation):
         # Run simulation for one timestep
         self.current_frame = self.world.tick()
 
+        if self.render:
+            self.displayClock.tick()
+
         # Wait for sensors to get updates
         for obj in self.objects:
             if obj.sensors:
@@ -310,7 +344,9 @@ class CarlaSimulation(DrivingSimulation):
 
         # Render simulation
         if self.render:
+            self.hud.tick(self.world, self.objects[0], self.displayClock)
             self.cameraManager.render(self.display)
+            self.hud.render(self.display)
             pygame.display.flip()
 
     def getProperties(self, obj, properties):

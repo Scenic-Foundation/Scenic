@@ -63,7 +63,7 @@ mainOptions.add_argument(
     "--scenario", default=None, help="name of scenario to run (if file contains multiple)"
 )
 mainOptions.add_argument(
-    "--2d", action="store_true", help="run Scenic in 2D compatibility mode"
+    "--2d", default=True, action="store_true", help="run Scenic in 2D compatibility mode"
 )
 
 # Simulation options

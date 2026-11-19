@@ -102,7 +102,7 @@ def scenarioFromString(
 
 
 def scenarioFromFile(
-    path, params={}, model=None, scenario=None, *, mode2D=False, **kwargs
+    path, params={}, model=None, scenario=None, *, mode2D=True, **kwargs
 ):
     """Compile a Scenic file into a `Scenario`.
 

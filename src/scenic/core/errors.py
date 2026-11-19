@@ -265,8 +265,9 @@ def includeFrame(frame):
 # we specially allow overwriting excepthooks from the following modules,
 # which are known to not cause problems:
 #   - exceptiongroup (PEP 654 backport for pre-3.11)
+#   - apport_python_hook (Ubuntu crash reporting system)
 if sys.excepthook is not sys.__excepthook__ and not sys.excepthook.__module__.startswith(
-    "exceptiongroup"
+    ("exceptiongroup", "apport_python_hook")
 ):
     warnings.warn("unable to install sys.excepthook to format Scenic backtraces")
 else:
