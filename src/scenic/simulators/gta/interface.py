@@ -8,6 +8,11 @@ import time
 import numpy
 import scipy.spatial
 
+from scenic.simulators.utils.coordinates import (
+    rep103ToScenicHeading,
+    scenicToRep103Heading,
+)
+
 try:
     import PIL
 except ModuleNotFoundError as e:
@@ -187,14 +192,14 @@ class Map:
         return ((self.Ax * x) + self.Bx, (self.Ay * y) + self.By)
 
     def gridToScenicHeading(self, heading):
-        return heading - (math.pi / 2)
+        return rep103ToScenicHeading(heading)
 
     def scenicToGridCoords(self, point):
         x, y = point[0], point[1]
         return ((x - self.Bx) / self.Ax, (y - self.By) / self.Ay)
 
     def scenicToGridHeading(self, heading):
-        return heading + (math.pi / 2)
+        return scenicToRep103Heading(heading)
 
     @distributionMethod
     def roadHeadingAt(self, point):

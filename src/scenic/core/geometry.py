@@ -44,12 +44,8 @@ def min(*args, **kwargs):
 
 @distributionFunction
 def normalizeAngle(angle) -> float:
-    while angle > math.pi:
-        angle -= math.tau
-    while angle < -math.pi:
-        angle += math.tau
-    assert -math.pi <= angle <= math.pi
-    return angle
+    """Normalize *angle* (radians) to the half-open interval [−π, π)."""
+    return (angle + math.pi) % math.tau - math.pi
 
 
 def averageVectors(a, b, weight=0.5):

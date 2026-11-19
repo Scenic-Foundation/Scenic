@@ -6,8 +6,45 @@ import shapely.ops
 import trimesh
 
 import scenic.core.geometry as geometry
+from scenic.core.geometry import normalizeAngle
 from scenic.core.object_types import Object
 from scenic.core.shapes import ConeShape
+
+
+## normalizeAngle
+
+
+def test_normalizeAngle_zero():
+    assert normalizeAngle(0) == 0.0
+
+
+def test_normalizeAngle_in_range():
+    assert normalizeAngle(math.pi / 4) == pytest.approx(math.pi / 4)
+    assert normalizeAngle(-math.pi / 3) == pytest.approx(-math.pi / 3)
+
+
+def test_normalizeAngle_positive_overflow():
+    assert normalizeAngle(3 * math.pi / 2) == pytest.approx(-math.pi / 2)
+    assert normalizeAngle(2 * math.pi) == pytest.approx(0.0)
+    assert normalizeAngle(3 * math.pi) == pytest.approx(-math.pi)
+
+
+def test_normalizeAngle_negative_overflow():
+    assert normalizeAngle(-3 * math.pi / 2) == pytest.approx(math.pi / 2)
+    assert normalizeAngle(-2 * math.pi) == pytest.approx(0.0)
+    assert normalizeAngle(-3 * math.pi) == pytest.approx(-math.pi)
+
+
+def test_normalizeAngle_boundary():
+    assert normalizeAngle(math.pi) == pytest.approx(-math.pi)
+    assert normalizeAngle(-math.pi) == pytest.approx(-math.pi)
+
+
+def test_normalizeAngle_large_multiple():
+    for n in range(1, 6):
+        assert normalizeAngle(2 * n * math.pi) == pytest.approx(0.0)
+        assert normalizeAngle(-2 * n * math.pi) == pytest.approx(0.0)
+
 
 ## Triangulation
 
