@@ -9,12 +9,12 @@ To run this file using the Carla simulator:
 """
 
 ## SET MAP AND MODEL (i.e. definitions of all referenceable vehicle types, road library, etc)
-param map = localPath('../../../assets/maps/CARLA/Town05.xodr')
-param carla_map = 'Town05'
+param map = localPath('../../../assets/maps/CARLA/Town10HD_Opt.xodr')
+param carla_map = 'Town10HD_Opt'
 model scenic.simulators.carla.model
 
 ## CONSTANTS
-EGO_MODEL = "vehicle.lincoln.mkz_2017"
+EGO_MODEL = "vehicle.nissan.patrol"
 EGO_SPEED = 10
 SAFETY_DISTANCE = 20
 BRAKE_INTENSITY = 1.0
@@ -78,7 +78,6 @@ ego = new Car at ego_spawn_pt,
 adversary = new Car at adv_spawn_pt,
     with behavior AdversaryBehavior(adv_trajectory)
 
-require (ego_start_section.laneToLeft == adv_end_section)  # make sure the ego and adversary are spawned in opposite lanes
-require 25 <= (distance to intersec) <= 30
+require 10 <= (distance to intersec) <= 30
 require 15 <= (distance from adversary to intersec) <= 20
 terminate when (distance to ego_spawn_pt) > 70

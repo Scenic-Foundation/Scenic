@@ -9,12 +9,12 @@ To run this file using the Carla simulator:
 """
 
 # SET MAP AND MODEL (i.e. definitions of all referenceable vehicle types, road library, etc)
-param map = localPath('../../../assets/maps/CARLA/Town05.xodr')
-param carla_map = 'Town05'
+param map = localPath('../../../assets/maps/CARLA/Town10HD_Opt.xodr')
+param carla_map = 'Town10HD_Opt'
 model scenic.simulators.carla.model
 
 # CONSTANTS
-EGO_MODEL = "vehicle.lincoln.mkz_2017"
+EGO_MODEL = "vehicle.nissan.patrol"
 EGO_SPEED = 10
 SAFETY_DISTANCE = 10
 BRAKE_INTENSITY = 1.0
@@ -36,8 +36,15 @@ behavior PedestrianBehavior(min_speed=1, threshold=10):
 # Please refer to scenic/domains/driving/roads.py how to access detailed road infrastructure
 # 'network' is the 'class Network' object in roads.py 
 
-# make sure to put '*' to uniformly randomly select from all elements of the list, 'network.lanes'
-lane = Uniform(*network.lanes)
+# collect all the curb-side lanes
+curbLanes = [
+  lg.lanes[0]
+  for lg in network.laneGroups
+  if lg is lg.road.forwardLanes
+]
+
+# make sure to put '*' to uniformly randomly select from all elements of the list
+lane = Uniform(*curbLanes)
 
 spot = new OrientedPoint on lane.centerline
 vending_spot = new OrientedPoint following roadDirection from spot for -3

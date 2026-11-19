@@ -77,13 +77,22 @@ Our interface to the `CARLA <https://carla.org/>`_ simulator enables using Sceni
 The interface supports dynamic scenarios written using the CARLA world model (:obj:`scenic.simulators.carla.model`) as well as scenarios using the cross-platform :ref:`driving_domain`.
 To use the interface, please follow these instructions:
 
-1. Install the latest version of CARLA (we've tested versions 0.9.9 through 0.9.16) from the `CARLA Release Page <https://github.com/carla-simulator/carla/releases>`_.
-   Note that CARLA currently only supports Linux and Windows.
+1. Install the latest version of CARLA (we've tested versions 0.9.9 through 0.10.0) from the `CARLA Release Page <https://github.com/carla-simulator/carla/releases>`_.
+   Note that CARLA currently only supports Linux and Windows. If you plan to use **0.10.0**, double-check its higher system requirements in the `CARLA UE5 quick-start guide <https://carla-ue5.readthedocs.io/en/latest/start_quickstart/>`_.
 2. Install Scenic in your Python virtual environment as instructed in :ref:`quickstart`.
 3. Within the same virtual environment, install CARLA's Python API.
    How to do this depends on the CARLA version and whether you built it from source:
 
 	.. tabs::
+
+		.. tab:: 0.10.0
+
+			If you're using **CARLA 0.10.0** (not yet on PyPI), install the client wheel that ships with the simulator:
+
+			.. code-block:: text
+
+				cd CARLA_ROOT/PythonAPI/dist/
+                                python3 -m pip install carla-*.*.*-cp3*-linux_x86_64.whl
 
 		.. tab:: 0.9.12+
 
@@ -119,8 +128,15 @@ To use the interface, please follow these instructions:
 You can check that the ``carla`` package was correctly installed by running :command:`python -c 'import carla'`: if it prints ``No module named 'carla'``, the installation didn't work.
 We suggest upgrading to a newer version of CARLA so that you can use :command:`pip` to install the Python API.
 
-To start CARLA, run the command :command:`./CarlaUE4.sh` in your CARLA folder.
+To start CARLA, run the command :command:`./CarlaUE4.sh` in your CARLA folder (for **CARLA 0.10.0**, use :command:`./CarlaUnreal.sh` instead).
 Once CARLA is running, you can run dynamic Scenic scenarios following the instructions in :ref:`the dynamics tutorial <dynamics_running_examples>`.
+
+.. note:: CARLA 0.10.0 compatibility
+	
+   - All ``examples/carla`` scenarios now support both CARLA 0.9.x and 0.10.0.  
+   - Only the **Town10HD_Opt** map is available in 0.10.0.  
+   - The 0.10.0 blueprint library is different (for example, bicycle blueprints are currently unavailable).
+   - There are some differences in physics in 0.10.0 (for example, car and pedestrian movement is slower). 
 
 
 Grand Theft Auto V

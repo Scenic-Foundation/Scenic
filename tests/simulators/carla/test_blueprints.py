@@ -10,6 +10,14 @@ from test_actions import getCarlaSimulator
 from scenic.simulators.carla import blueprints as bp
 from tests.utils import compileScenic, sampleScene
 
+# Known-good spawn points for the CARLA blueprint tests:
+# - CARLA 0.10.0 uses Town10HD_Opt
+# - CARLA 0.9.x uses Town01
+BLUEPRINT_TEST_SPAWNS = {
+    "Town10HD_Opt": (-103, 37.6),
+    "Town01": (369, -326),
+}
+
 # Map class name -> ids dict key
 CATEGORY_TO_CLASS = {
     "carModels": "Car",
@@ -53,13 +61,14 @@ PARAMS = [
 
 
 def model_blueprint(simulator, mapPath, town, modelType, modelName):
+    spawn = BLUEPRINT_TEST_SPAWNS[town]
     code = f"""
         param map = r'{mapPath}'
         param carla_map = '{town}'
         param time_step = 1.0/10
 
         model scenic.simulators.carla.model
-        ego = new {modelType} at (369, -326), 
+        ego = new {modelType} at {spawn},
               with blueprint '{modelName}',
               with regionContainedIn None
         terminate after 1 steps
@@ -73,5 +82,5 @@ def model_blueprint(simulator, mapPath, town, modelType, modelName):
 
 @pytest.mark.parametrize("modelType, modelName", PARAMS)
 def test_model_blueprints(getCarlaSimulator, modelType, modelName):
-    simulator, town, mapPath = getCarlaSimulator("Town01")
+    simulator, town, mapPath = getCarlaSimulator()
     model_blueprint(simulator, mapPath, town, modelType, modelName)
