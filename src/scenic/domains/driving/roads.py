@@ -262,7 +262,7 @@ class NetworkElement(_ElementReferencer, WrapperRegion):
                 self.region = nowhere
 
         WrapperRegion.__init__(self, self.region)
-        _ElementReferencer().__init__()
+        _ElementReferencer.__init__(self)
 
     @distributionFunction
     def nominalDirectionsAt(self, point: Vectorlike) -> Tuple[Orientation]:

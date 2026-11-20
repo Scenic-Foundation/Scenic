@@ -68,17 +68,13 @@ endLane = straight_maneuver.endLane
 lane_traj = [startLane, connectingLane, endLane]
 intersection_edge = startLane.centerline[-1]
 
-# --
-
 walkDirection = angle from pedSpawn to pedEnd
-pedStartPoint = new OrientedPoint at pedSpawn,
-                    facing walkDirection
 
 # PLACEMENT
 ego = new Car following roadDirection from intersection_edge for EGO_OFFSET,
         with behavior EgoBehavior(target_speed=EGO_SPEED, trajectory=lane_traj)
 
-ped = new Pedestrian at pedStartPoint,
+ped = new Pedestrian at pedSpawn,
         with regionContainedIn None,
         with parentOrientation 0,
         with behavior PedestrianCrossBehavior(PED_THRESHOLD, PED_SPEED, walkDirection),

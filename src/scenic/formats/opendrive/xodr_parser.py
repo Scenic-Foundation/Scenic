@@ -890,23 +890,60 @@ class Road:
                 last_section = section
 
             fss, bss = {}, {}
-            # Special case for one way roads
-            isOneWayForward = all(id_ < 0 for id_ in sec.lanes)
-            isOneWayBackward = all(id_ > 0 for id_ in sec.lanes)
-            isOneWay = isOneWayForward or isOneWayBackward
-            isSeparated = (
-                sec.sidewalk_lanes
-                and max(sec.sidewalk_lanes.keys()) - min(sec.sidewalk_lanes.keys())
-                == len(sec.sidewalk_lanes) + 1
-            )
-            sidewalkDirHelper = lambda x: (
-                x == min(sec.sidewalk_lanes.keys())
-                if isOneWayForward
-                else x == max(sec.sidewalk_lanes.keys())
-            )
-            isForwardSidewalk = lambda x: (
-                sidewalkDirHelper(x) if isOneWay and isSeparated else isForward(x)
-            )
+            # Check whether this road is a one way road, and if so, which direction
+            # relative to the base direction of travel.
+            oneWayForwardRoad = all(isForward(id_) for id_ in sec.lanes)
+            oneWayBackwardRoad = all(not isForward(id_) for id_ in sec.lanes)
+            oneWayRoad = oneWayForwardRoad or oneWayBackwardRoad
+
+            if sec.sidewalk_lanes:
+                # Determines whether or not a sidewalk is a forward sidewalk, on a one
+                # way road. We do this by finding the "innermost" sidewalk (closest to
+                # the reference line dividing forwards and backwards; id=0), and finding
+                # the first non-sidewalk lane with a sidewalk beyond. Any sidewalk lane id
+                # with an absolute value less than that non-sidewalk lane is:
+                #   - Backwards on a oneWayForwardRoad
+                #   - Forwards on a oneWayBackwardRoad
+                # Note: We use abs() everywhere here to account for both right and left
+                #       handed traffic, since min(abs()) allows us to compute "innermost".
+                innermostSidewalkId = min(map(abs, sec.sidewalk_lanes.keys()))
+                candidateDividingIds = [
+                    abs(id_)
+                    for id_ in sec.lanes.keys()
+                    if (
+                        abs(id_) > innermostSidewalkId
+                        and id_ not in sec.sidewalk_lanes
+                        and any(
+                            filter(
+                                lambda x: abs(x) > abs(id_) and x in sec.sidewalk_lanes,
+                                sec.lanes.keys(),
+                            )
+                        )
+                    )
+                ]
+                # If there are no candidateDividingIds, then we fall back to treating the
+                # innermostSidewalk block as the sole sidewalk.
+                dividingId = min(candidateDividingIds) if candidateDividingIds else 0
+
+                def isForwardSidewalkOneWay(id_):
+                    # if oneWayForwardRoad:
+                    #     # For a oneWayForwardRoad, every sidewalk lane less than the
+                    #     # dividing id becomes "backwards". This leaves all other lanes
+                    #     # remaining "forwards".
+                    #     return abs(id_) > dividingId
+                    # else:
+                    #     # For a oneWayBackwardRoad, every sidewalk lane less than the
+                    #     # dividing id becomes "forwards".
+                    #     return abs(id_) < dividingId
+                    # Simplified,
+                    return oneWayForwardRoad == (abs(id_) > dividingId)
+
+                # For two-way roads, we simply use isForwards to determine which group to
+                # put a sidewalk lane in.
+                # For one-way roads, we hijack the sidewalk list opposite of the direction of
+                # travel to contain the sidewalk list that is closer to the reference line (id 0).
+                def isForwardSidewalk(id_):
+                    return isForwardSidewalkOneWay(id_) if oneWayRoad else isForward(id_)
 
             for id_, lane in sec.sidewalk_lanes.items():
                 if lane.poly is None:  # skip if we could not generate polygon
@@ -1028,10 +1065,10 @@ class Road:
 
         # Note: isOneWay values are assuming a road is consistently one way
         forwardSidewalk = makeSidewalk(
-            forwardSidewalks, direction="Forward", backward=False or isOneWayBackward
+            forwardSidewalks, direction="Forward", backward=oneWayBackwardRoad
         )
         backwardSidewalk = makeSidewalk(
-            backwardSidewalks, direction="Backward", backward=True and not isOneWayForward
+            backwardSidewalks, direction="Backward", backward=(not oneWayForwardRoad)
         )
 
         def makeShoulder(sections, backward=False):
@@ -1342,15 +1379,15 @@ class Road:
         return road, allElements
 
     def xyz_heading_at_s(self, s):
-        cumalative_curve_length = 0.0
+        cumulative_curve_length = 0.0
 
         for curve in self.ref_line:
-            if cumalative_curve_length + curve.length >= s - 1e-9:
-                local_s = s - cumalative_curve_length
+            if cumulative_curve_length + curve.length >= s - 1e-9:
+                local_s = s - cumulative_curve_length
                 x, y, z = curve.point_at(local_s)
                 heading = curve.heading_at(local_s)
                 return (x, y, z), heading
-            cumalative_curve_length = cumalative_curve_length + curve.length
+            cumulative_curve_length = cumulative_curve_length + curve.length
 
         last_curve = self.ref_line[-1]
         x, y, z = last_curve.point_at(last_curve.length)
@@ -1491,27 +1528,22 @@ class Road:
             (bottom_cut_index + 1) % len(crosswalk_polygon_coords),
         )
 
-        def walk_polygon(n, bottom_cut, top_cut):
-            t0, t1 = top_cut
-            b0, b1 = bottom_cut
+        n = len(crosswalk_polygon_coords)
+        t0, t1 = top_cut
+        b0, b1 = bottom_cut
 
-            left_indices = [t0]
-            i = t0
-            while i != b1:
-                i = (i - 1 + n) % n
-                left_indices.append(i)
+        left_indices = [t0]
+        i = t0
+        while i != b1:
+            i = (i - 1 + n) % n
+            left_indices.append(i)
 
-            right_indices = [t1]
-            i = t1
-            while i != b0:
-                i = (i + 1) % n
-                right_indices.append(i)
+        right_indices = [t1]
+        i = t1
+        while i != b0:
+            i = (i + 1) % n
+            right_indices.append(i)
 
-            return left_indices, right_indices
-
-        left_indices, right_indices = walk_polygon(
-            len(crosswalk_polygon_coords), bottom_cut, top_cut
-        )
         left_edge = [crosswalk_polygon_coords[i] for i in left_indices]
         right_edge = [crosswalk_polygon_coords[i] for i in right_indices]
 
@@ -2389,7 +2421,7 @@ class RoadMap:
         intersections = tuple(intersections.values())
         crossings = []
         seenCrossings = set()
-        for element in (*allRoads, *intersections):
+        for element in itertools.chain(allRoads, intersections):
             for crossing in element.crossings:
                 if crossing not in seenCrossings:
                     seenCrossings.add(crossing)
@@ -2413,13 +2445,9 @@ class RoadMap:
         # Link crosswalks to their closest sidewalk (within reason)
         def findSidewalk(point, maxDist=5):
             sidewalksDist = [(s, s.distanceTo(point)) for s in sidewalks]
-            sidewalksDist = list(
-                sorted(
-                    filter(lambda x: x[1] <= maxDist, sidewalksDist), key=lambda x: x[1]
-                )
-            )
-            if sidewalksDist:
-                return sidewalksDist[0][0]
+            closestSidewalk = min(sidewalksDist, key=lambda x: x[1])
+            if closestSidewalk[1] <= maxDist:
+                return closestSidewalk[0]
             else:
                 return None
 
