@@ -402,7 +402,7 @@ def test_opendrive_arrow_head_type_is_traffic_light(tmp_path):
     signal = signal_on(road, 201)
     assert signal.type == "1000020"
     assert signal.isTrafficLight
-    assert signal.tags == frozenset()
+    assert signal.tags == frozenset({SignalTag.TRAFFIC_LIGHT})
     assert signal.otherTags == frozenset()
 
 
@@ -417,7 +417,7 @@ def test_deprecated_position_road_halts_at_logical_s_not_pole(tmp_path):
     assert stop.s == 12.0
     assert stop.stoppingS == 12.0
     assert stop.type == "206"
-    assert stop.tags == frozenset()
+    assert stop.tags == frozenset({SignalTag.STOP})
     assert stop.isStop
     assert stop.stoppingPositionOn(lanes[-1]) is None
     _st(stop.stoppingPositionOn(lanes[1]), 12.0, 1.75)
@@ -430,7 +430,7 @@ def test_deprecated_position_inertial_halts_at_logical_s(tmp_path):
     yield_sig = signal_on(road, 11)
     assert yield_sig.stoppingS == 28.0
     assert yield_sig.type == "205"
-    assert yield_sig.tags == frozenset()
+    assert yield_sig.tags == frozenset({SignalTag.YIELD})
     assert yield_sig.isYield
     _st(yield_sig.stoppingPositionOn(lanes[-1]), 28.0, -1.75)
     assert yield_sig.stoppingPositionOn(lanes[1]) is None
@@ -518,6 +518,7 @@ def test_signal_reference_keeps_this_roads_placement(tmp_path):
     canonical = signal_on(west, 201)
     clone = signal_on(east, 201)
     assert canonical.type == clone.type == "1000001"
+    assert canonical.tags == clone.tags == frozenset({SignalTag.TRAFFIC_LIGHT})
     assert canonical.s == 18.0
     assert clone.s == 1.5
     assert clone.orientation == "-"
@@ -579,7 +580,7 @@ def test_carla_twoway_arriving_side_halts_leaving_side_does_not(tmp_path):
     assert west_light.stoppingS == 20.0
     assert east_light.stoppingS == 0.0
     assert west_light.type == "1000001"
-    assert west_light.tags == frozenset()
+    assert west_light.tags == frozenset({SignalTag.TRAFFIC_LIGHT})
     assert west_light.isTrafficLight
 
     # West +s is arriving at the junction.
@@ -687,3 +688,200 @@ def test_town01_exit_lane_does_not_halt_at_entry(getAssetPath):
     assert entry_light.stoppingPositionOn(leaving) is None
     start = leaving.centerline.pointAlongBy(1.0)
     assert leaving.haltPositionAhead(start, lookahead=15.0) is None
+
+
+def test_type_code_tag_does_not_override_an_explicit_priority(tmp_path):
+    """A yield priority on a type-206 sign stays a yield."""
+    xml = MAP_DEPRECATED_LOGICAL.replace(
+        """      <signal s="12.0" t="-1.75" id="10" name="legacy_stop" dynamic="no"
+              orientation="-" zOffset="2" type="206" country="OpenDRIVE"
+              subtype="-1" value="-1">
+        <positionRoad roadId="1" s="16.0" t="-4.0" zOffset="2" hOffset="0"/>
+      </signal>""",
+        """      <signal s="12.0" t="-1.75" id="10" name="legacy_stop" dynamic="no"
+              orientation="-" zOffset="2" type="206" country="OpenDRIVE"
+              subtype="-1" value="-1">
+        <semantics><priority type="yield"/></semantics>
+        <positionRoad roadId="1" s="16.0" t="-4.0" zOffset="2" hOffset="0"/>
+      </signal>""",
+    )
+    signal = signal_on(road_by_id(load_network(tmp_path, xml), 1), 10)
+    assert signal.tags == frozenset({SignalTag.YIELD})
+    assert signal.isYield
+    assert not signal.isStop
+
+
+def test_turn_on_red_alone_still_picks_up_the_light_type(tmp_path):
+    xml = MAP_SIGNAL_REFERENCE.replace(
+        'subtype="-1" value="-1"/>',
+        """subtype="-1" value="-1">
+        <semantics><priority type="turnOnRedAllowed"/></semantics>
+      </signal>""",
+    )
+    signal = signal_on(road_by_id(load_network(tmp_path, xml), 1), 201)
+    assert signal.tags == frozenset(
+        {SignalTag.TRAFFIC_LIGHT, SignalTag.TURN_ON_RED_ALLOWED}
+    )
+    assert signal.isTrafficLight
+    assert signal.isTurnOnRedAllowed
+
+
+def test_distinct_connector_signals_share_a_station_and_stay_distinct(tmp_path):
+    """Two devices on one connector land at the same contact and both remain.
+
+    A shared station after conversion is different signals moved onto the
+    incoming road, not one id counted twice.
+    """
+    xml = MAP_CONNECTOR_HOSTED_LIGHT.replace(
+        """      <signal s="2.0" t="-4.0" id="500" name="connector_light" dynamic="yes"
+              orientation="+" zOffset="5" type="1000001" country="OpenDRIVE"
+              subtype="-1" value="-1"/>
+""",
+        """      <signal s="2.0" t="-4.0" id="500" name="connector_light" dynamic="yes"
+              orientation="+" zOffset="5" type="1000001" country="OpenDRIVE"
+              subtype="-1" value="-1"/>
+      <signal s="6.0" t="4.0" id="501" name="connector_stop" dynamic="no"
+              orientation="-" zOffset="2" type="206" country="OpenDRIVE"
+              subtype="-1" value="-1"/>
+""",
+    )
+    west = road_by_id(load_network(tmp_path, xml), 1)
+    light = signal_on(west, 500)
+    stop = signal_on(west, 501)
+    assert light.s == pytest.approx(west.centerline.length)
+    assert stop.s == pytest.approx(light.s)
+    assert light.openDriveID != stop.openDriveID
+    assert light.orientation != stop.orientation
+    assert SignalTag.TRAFFIC_LIGHT in light.tags
+    assert SignalTag.STOP in stop.tags
+
+
+@pytest.mark.slow
+def test_town05_signals_are_tagged_from_type_codes(getAssetPath):
+    """Town05 has no <semantics>; type 1000001 and 206 must still be tagged.
+
+    Signals that share a station after connector signals move onto the incoming
+    road are distinct ids and are all kept.
+    """
+    from scenic.core.geometry import TriangulationError
+
+    path = Path(getAssetPath("maps/CARLA/Town05.xodr"))
+    if not path.exists():
+        pytest.skip("Town05.xodr not shipped")
+    try:
+        network = Network.fromOpenDrive(path, ref_points=40, tolerance=0.05)
+    except TriangulationError:
+        pytest.skip("need better triangulation library")
+
+    by_type = {"1000001": SignalTag.TRAFFIC_LIGHT, "206": SignalTag.STOP}
+    seen = set()
+    for sig in network.signals:
+        expected = by_type.get(sig.type)
+        if expected is None:
+            continue
+        seen.add(expected)
+        assert expected in sig.tags
+    assert seen == {SignalTag.TRAFFIC_LIGHT, SignalTag.STOP}
+
+    groups = {}
+    for sig in network.signals:
+        groups.setdefault((sig.road.uid, round(sig.s, 3)), []).append(sig)
+    clusters = [group for group in groups.values() if len(group) > 1]
+    assert clusters
+    for group in clusters:
+        ids = [sig.openDriveID for sig in group]
+        assert len(ids) == len(set(ids))
+
+
+def _navy_halt_lines(ax):
+    from matplotlib.colors import to_hex
+
+    return [
+        line
+        for line in ax.lines
+        if to_hex(line.get_color()).lower() == "#1e3a8a"
+    ]
+
+
+def test_halt_lines_sharing_a_station_are_drawn_once(tmp_path):
+    """Two signs at one station become one line; other stations stay separate."""
+    import matplotlib
+
+    matplotlib.use("Agg", force=True)
+    import matplotlib.pyplot as plt
+
+    xml = MAP_DEPRECATED_LOGICAL.replace(
+        """      <signal s="20.0" t="0.0" id="12" name="both_ways_line" dynamic="no"
+              orientation="none" zOffset="0" type="-1" country="OpenDRIVE"
+              subtype="-1" value="-1">
+        <semantics><priority type="stopLine"/></semantics>
+      </signal>""",
+        """      <signal s="20.0" t="0.0" id="12" name="both_ways_stop" dynamic="no"
+              orientation="none" zOffset="0" type="206" country="OpenDRIVE"
+              subtype="-1" value="-1"/>
+      <signal s="20.0" t="1.0" id="13" name="second_stop" dynamic="no"
+              orientation="none" zOffset="0" type="206" country="OpenDRIVE"
+              subtype="-1" value="-1"/>""",
+    )
+    network = load_network(tmp_path, xml)
+    plt.figure()
+    network.show()
+    lines = _navy_halt_lines(plt.gca())
+    assert len(lines) == 3
+    lengths = []
+    for line in lines:
+        xs, ys = line.get_xdata(), line.get_ydata()
+        lengths.append(((xs[1] - xs[0]) ** 2 + (ys[1] - ys[0]) ** 2) ** 0.5)
+    assert sum(length > 6 for length in lengths) == 1
+    plt.close()
+
+
+def test_traffic_light_defaults_to_the_stop_line(tmp_path):
+    """Heads sit on the halt unless signalPosition asks for the pole.
+
+    A lane-specific reference is what assigns the maneuver, so the head is
+    labeled for that lane.
+    """
+    import matplotlib
+
+    matplotlib.use("Agg", force=True)
+    import matplotlib.pyplot as plt
+
+    xml = MAP_CARLA_TWOWAY.replace(
+        """      </laneSection>
+    </lanes>
+  </road>
+  <junction name="J" id="100">
+""",
+        """      </laneSection>
+    </lanes>
+    <signals>
+      <signalReference s="1.0" t="0.0" id="362" orientation="+">
+        <validity fromLane="-1" toLane="-1"/>
+      </signalReference>
+    </signals>
+  </road>
+  <junction name="J" id="100">
+""",
+    )
+    network = load_network(tmp_path, xml)
+    plt.figure()
+    network.show()
+    notes = list(plt.gca().texts)
+    assert [text.get_text() for text in notes] == ["S"]
+    x, y = notes[0].xy
+    assert abs(x - 20.0) < 0.5
+    assert abs(y + 1.75) < 0.5
+    plt.close()
+
+    plt.figure()
+    network.show(signalPosition="pole")
+    notes = list(plt.gca().texts)
+    assert [text.get_text() for text in notes] == ["S"]
+    x, y = notes[0].xy
+    assert abs(x - 18.5) < 0.5
+    assert abs(y + 4.5) < 0.5
+    plt.close()
+
+    with pytest.raises(ValueError, match="signalPosition"):
+        network.show(signalPosition="middle")

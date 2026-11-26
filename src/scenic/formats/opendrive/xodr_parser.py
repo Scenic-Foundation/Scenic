@@ -1526,25 +1526,39 @@ class RoadMap:
     }
 
     def __parse_signal_tags(self, signal_elem):
-        """Collect known tags and leftover literals from ``<priority>``."""
+        """Collect known tags and leftover literals from ``<priority>``.
+
+        When no classifying priority is present, the OpenDRIVE ``type`` code
+        supplies one. CARLA maps omit ``<semantics>`` and name the device that way.
+        An explicit priority is left as written, so a type code never overrides it.
+        """
         tags = set()
         otherTags = set()
         semantics_elem = signal_elem.find("semantics")
-        if semantics_elem is None:
-            return frozenset(), frozenset()
-        for priority_elem in semantics_elem.findall("priority"):
-            type_str = priority_elem.get("type")
-            if type_str is None:
-                warn(
-                    f'signal {signal_elem.get("id")} has <priority> without type; '
-                    "skipping it"
-                )
-                continue
-            tag = self._OPENDRIVE_PRIORITY_TO_TAG.get(type_str)
-            if tag is not None:
-                tags.add(tag)
-            else:
-                otherTags.add(type_str)
+        if semantics_elem is not None:
+            for priority_elem in semantics_elem.findall("priority"):
+                type_str = priority_elem.get("type")
+                if type_str is None:
+                    warn(
+                        f'signal {signal_elem.get("id")} has <priority> without type; '
+                        "skipping it"
+                    )
+                    continue
+                tag = self._OPENDRIVE_PRIORITY_TO_TAG.get(type_str)
+                if tag is not None:
+                    tags.add(tag)
+                else:
+                    otherTags.add(type_str)
+        classifying = {
+            roadDomain.SignalTag.STOP,
+            roadDomain.SignalTag.FOUR_WAY,
+            roadDomain.SignalTag.YIELD,
+            roadDomain.SignalTag.TRAFFIC_LIGHT,
+        }
+        if not tags & classifying:
+            inferred = roadDomain.signalTagForOpenDriveType(signal_elem.get("type"))
+            if inferred is not None:
+                tags.add(inferred)
         return frozenset(tags), frozenset(otherTags)
 
     def __parse_signal(self, signal_elem):

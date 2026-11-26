@@ -176,6 +176,27 @@ class SignalTag(enum.Enum):
     #: Turning on red is forbidden. Optional; a light may instead have neither tag.
 
 
+# CARLA maps name the device with OpenDRIVE ``type`` and omit ``<semantics>``.
+_OPENDRIVE_TYPE_TO_TAG = {
+    "205": SignalTag.YIELD,
+    "206": SignalTag.STOP,
+    "1000001": SignalTag.TRAFFIC_LIGHT,
+    "1000008": SignalTag.TRAFFIC_LIGHT,
+    "1000009": SignalTag.TRAFFIC_LIGHT,
+    "1000010": SignalTag.TRAFFIC_LIGHT,
+    "1000011": SignalTag.TRAFFIC_LIGHT,
+    "1000012": SignalTag.TRAFFIC_LIGHT,
+    "1000020": SignalTag.TRAFFIC_LIGHT,
+}
+
+
+def signalTagForOpenDriveType(type_code: Optional[str]) -> Optional[SignalTag]:
+    """Control tag implied by an OpenDRIVE ``type`` code, if one is known."""
+    if type_code is None:
+        return None
+    return _OPENDRIVE_TYPE_TO_TAG.get(type_code)
+
+
 @attr.s(auto_attribs=True, kw_only=True, eq=False)
 class Maneuver(_ElementReferencer):
     """Maneuver()
@@ -1186,31 +1207,43 @@ class Signal:
         t = road._lateralOffsetAt(s, lane_point)
         return s, t
 
+    def _typeTagIfUnclassified(self) -> Optional[SignalTag]:
+        """Type-code tag, used only when no classifying tag was stored.
+
+        An explicit stop, yield, four-way, or traffic-light tag wins over the
+        OpenDRIVE ``type`` code. Turn-on-red tags do not classify the device.
+        """
+        classifying = {
+            SignalTag.STOP,
+            SignalTag.FOUR_WAY,
+            SignalTag.YIELD,
+            SignalTag.TRAFFIC_LIGHT,
+        }
+        if self.tags & classifying:
+            return None
+        return signalTagForOpenDriveType(self.type)
+
     @property
     def isTrafficLight(self) -> bool:
         """Whether this is a signalized control (red/yellow/green or equivalent)."""
-        if self.hasTag(SignalTag.TRAFFIC_LIGHT):
-            return True
-        # CARLA / OpenDRIVE maps encode lights as type codes, not tags.
-        return self.type in {
-            "1000001",
-            "1000008",
-            "1000009",
-            "1000010",
-            "1000011",
-            "1000012",
-            "1000020",
-        }
+        return (
+            self.hasTag(SignalTag.TRAFFIC_LIGHT)
+            or self._typeTagIfUnclassified() is SignalTag.TRAFFIC_LIGHT
+        )
 
     @property
     def isStop(self) -> bool:
         """Whether the vehicle must come to a complete stop before proceeding."""
-        return self.hasTag(SignalTag.STOP) or self.type == "206"
+        return self.hasTag(SignalTag.STOP) or (
+            self._typeTagIfUnclassified() is SignalTag.STOP
+        )
 
     @property
     def isYield(self) -> bool:
         """Whether the vehicle must give way; a full stop is not always required."""
-        return self.hasTag(SignalTag.YIELD) or self.type == "205"
+        return self.hasTag(SignalTag.YIELD) or (
+            self._typeTagIfUnclassified() is SignalTag.YIELD
+        )
 
     @property
     def isFourWay(self) -> bool:
@@ -1301,6 +1334,24 @@ def _showYieldSign(ax, patches, transforms, center, slot):
                 clip_on=False,
             )
         )
+
+
+_MANEUVER_MARKS = (
+    (ManeuverType.LEFT_TURN, "L"),
+    (ManeuverType.STRAIGHT, "S"),
+    (ManeuverType.RIGHT_TURN, "R"),
+    (ManeuverType.U_TURN, "U"),
+)
+
+
+def _maneuverMark(signal, lane) -> str:
+    """Letters for the maneuvers ``signal`` controls on ``lane``.
+
+    ``L`` left, ``S`` straight, ``R`` right, ``U`` u-turn. Empty when this
+    signal does not control ``lane``.
+    """
+    present = {m.type for m in signal.controlledManeuvers if m.startLane is lane}
+    return " ".join(letter for kind, letter in _MANEUVER_MARKS if kind in present)
 
 
 def _showTrafficLight(ax, patches, transforms, center, slot):
@@ -1504,7 +1555,7 @@ class Network:
 
         :meta private:
         """
-        return 40
+        return 41
 
     class DigestMismatchError(Exception):
         """Exception raised when loading a cached map not matching the original file."""
@@ -1858,85 +1909,147 @@ class Network:
         elem = self.findPointIn(point, self._nominalDirElems, reject)
         return elem.nominalDirectionsAt(point) if elem is not None else ()
 
-    def _showHaltMarks(self, plt):
+    def _showHaltMarks(self, plt, signalPosition="halt"):
         """Draw halt lines, stop signs, yield signs, and traffic-light marks.
 
-        A stop, yield, or all-way halt is a line across each lane it controls.
-        A stop sign is also a red octagon, and an all-way stop uses the same
-        sign. A yield is a downward triangle with a red border. A traffic light
-        is a box with red, yellow, and green circles, drawn at the pole rather
-        than on the stop line. Marks that share a point are stepped sideways
-        so each one stays visible.
+        Halt lines that fall on the same station of one road are drawn as a
+        single line spanning those lanes. A stop sign is a red octagon and an
+        all-way stop uses the same sign, both on that line. A yield is a
+        downward triangle. A traffic light is a box with red, yellow, and
+        green circles. By default the head sits on the stop line; pass
+        ``signalPosition="pole"`` to put it at the signal's physical
+        ``s``/``t`` instead. A letter names the maneuvers that head controls
+        on the lane it is drawn for: L left, S straight, R right, U u-turn.
+        Marks that share a point are stepped sideways so each one stays visible.
         """
         import matplotlib.patches as patches
         import matplotlib.transforms as transforms
 
+        if signalPosition not in ("halt", "pole"):
+            raise ValueError(
+                f"signalPosition must be 'halt' or 'pole', got {signalPosition!r}"
+            )
         ax = plt.gca()
         seen_marks = set()
         marks_here = {}
+        halt_segments = {}
         for lane in self.lanes:
             length = lane.centerline.length
             if length <= 0:
                 continue
             for entry in lane._signalEntries:
                 signal = entry.signal
-                local_s = min(max(entry.localS, 0.0), length)
-                center = lane.centerline.pointAlongBy(local_s)
-                if (
+                if not (
                     signal.isStop
                     or signal.isYield
                     or signal.isFourWay
                     or signal.isTrafficLight
                 ):
-                    left = lane.leftEdge.project(center)
-                    right = lane.rightEdge.project(center)
-                    plt.plot(
-                        (left.x, right.x),
-                        (left.y, right.y),
-                        color="#1E3A8A",
-                        linewidth=2.5,
-                        solid_capstyle="butt",
-                        zorder=4,
-                    )
-                if (
-                    signal.isTrafficLight
-                    or signal.isStop
-                    or signal.isFourWay
-                    or signal.isYield
-                ):
-                    key = (signal.openDriveID, lane.road.uid, round(entry.roadS, 2))
-                    if key in seen_marks:
+                    continue
+                local_s = min(max(entry.localS, 0.0), length)
+                center = lane.centerline.pointAlongBy(local_s)
+                left = lane.leftEdge.project(center)
+                right = lane.rightEdge.project(center)
+                halt_segments.setdefault(
+                    (lane.road.uid, round(entry.roadS, 2)), []
+                ).append((left, right))
+                label = ""
+                if signal.isTrafficLight:
+                    label = _maneuverMark(signal, lane)
+                    # A light with known maneuvers is drawn only on those lanes.
+                    if signal.controlledManeuvers and not label:
                         continue
-                    seen_marks.add(key)
-                    # A signal head sits at its pole. The stop line stays at the halt.
-                    if signal.isTrafficLight and signal.s is not None:
+                    if label:
+                        key = (
+                            signal.openDriveID,
+                            lane.road.uid,
+                            round(entry.roadS, 2),
+                            lane.uid,
+                        )
+                    else:
+                        key = (signal.openDriveID, lane.road.uid, round(entry.roadS, 2))
+                    if signalPosition == "pole" and signal.s is not None:
                         anchor = _pointOnRoad(lane.road, signal.s, signal.t or 0.0)
                     else:
                         anchor = center
-                    place = (round(anchor.x, 1), round(anchor.y, 1))
-                    slot = marks_here.get(place, 0)
-                    marks_here[place] = slot + 1
-                    if signal.isTrafficLight:
-                        _showTrafficLight(ax, patches, transforms, anchor, slot)
-                    elif signal.isYield:
-                        _showYieldSign(ax, patches, transforms, center, slot)
-                    else:
-                        _showStopSign(ax, patches, transforms, center, slot)
+                else:
+                    key = (signal.openDriveID, lane.road.uid, round(entry.roadS, 2))
+                    anchor = center
+                if key in seen_marks:
+                    continue
+                seen_marks.add(key)
+                place = (round(anchor.x, 1), round(anchor.y, 1))
+                slot = marks_here.get(place, 0)
+                marks_here[place] = slot + 1
+                if signal.isTrafficLight:
+                    _showTrafficLight(ax, patches, transforms, anchor, slot)
+                    if label:
+                        ax.annotate(
+                            label,
+                            xy=(anchor.x, anchor.y),
+                            xytext=(slot * 14, 16),
+                            textcoords="offset points",
+                            ha="center",
+                            va="bottom",
+                            fontsize=10,
+                            fontweight="bold",
+                            color="#0F172A",
+                            zorder=8,
+                            clip_on=False,
+                            bbox={
+                                "boxstyle": "round,pad=0.2",
+                                "facecolor": "white",
+                                "edgecolor": "#1E3A8A",
+                                "linewidth": 0.8,
+                            },
+                        )
+                elif signal.isYield:
+                    _showYieldSign(ax, patches, transforms, center, slot)
+                else:
+                    _showStopSign(ax, patches, transforms, center, slot)
+        for segments in halt_segments.values():
+            points = [(pt.x, pt.y) for edge in segments for pt in edge]
+            span = None
+            for i in range(len(points)):
+                for j in range(i + 1, len(points)):
+                    distance = (points[i][0] - points[j][0]) ** 2 + (
+                        points[i][1] - points[j][1]
+                    ) ** 2
+                    if span is None or distance > span[0]:
+                        span = (distance, i, j)
+            if span is None or span[0] <= 0:
+                continue
+            start, end = points[span[1]], points[span[2]]
+            plt.plot(
+                (start[0], end[0]),
+                (start[1], end[1]),
+                color="#1E3A8A",
+                linewidth=2.5,
+                solid_capstyle="butt",
+                zorder=4,
+            )
 
-    def show(self, labelIncomingLanes=False, showCurbArrows=False):
+    def show(
+        self, labelIncomingLanes=False, showCurbArrows=False, signalPosition="halt"
+    ):
         """Render a schematic of the road network for debugging.
 
         If you call this function directly, you'll need to subsequently call
         `matplotlib.pyplot.show` to actually display the diagram.
 
-        Stop, yield, and all-way halts are drawn as a line across the lane.
-        A stop sign is a red octagon, a yield is a downward triangle, and a
-        traffic light is a box with three circles at the pole, not on the stop line.
+        Stop, yield, and all-way halts are drawn as one line per station.
+        A stop sign is a red octagon and a yield is a downward triangle, both
+        on that line. A traffic light is a box with three circles. It sits on
+        the stop line unless ``signalPosition`` is ``"pole"``. Letters on a
+        light name the maneuvers it controls there (L, S, R, U).
 
         Args:
             labelIncomingLanes (bool): Whether to label the incoming lanes of
                 intersections with their indices in ``incomingLanes``.
             showCurbArrows (bool): Whether to draw arrows along the curb to show orientation
+            signalPosition (str): ``"halt"`` draws each traffic light on the stop
+                line of the lanes it controls. ``"pole"`` draws it at the
+                signal's physical ``s`` and ``t``.
         """
         import matplotlib.pyplot as plt
 
@@ -2001,4 +2114,4 @@ class Network:
                     x, y, _ = lane.centerline[-1]
                     plt.plot([x], [y], "*b")
                     plt.annotate(str(i), (x, y))
-        self._showHaltMarks(plt)
+        self._showHaltMarks(plt, signalPosition=signalPosition)
