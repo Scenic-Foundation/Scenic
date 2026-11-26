@@ -6,7 +6,11 @@ import pytest
 
 import scenic.core.dynamics as dynamics
 from scenic.core.errors import InvalidScenarioError, ScenicSyntaxError
-from scenic.core.simulators import RejectSimulationException, TerminationType
+from scenic.core.simulators import (
+    DummySimulation,
+    RejectSimulationException,
+    TerminationType,
+)
 from tests.utils import (
     checkErrorLineNumber,
     compileScenic,
@@ -1327,6 +1331,53 @@ def test_behavior_require_soft():
         xs.append(actions[0])
     count = sum(x >= 0 for x in xs)
     assert 255 <= count < 350
+
+
+def test_requirement_checked_after_setup(monkeypatch):
+    """Non-temporal requirements should be checked after simulation setup.
+
+    (In case the simulator modified objects during creation.)
+    """
+    oldGetProp = DummySimulation.getProperties
+
+    def getPropHacked(self, obj, properties):
+        vals = oldGetProp(self, obj, properties)
+        vals["position"] += (1, 0, 0)
+        return vals
+
+    monkeypatch.setattr(DummySimulation, "getProperties", getPropHacked)
+
+    scenario = compileScenic(
+        """
+        ego = new Object
+        require ego.x == 0
+        """
+    )
+    scene = sampleScene(scenario)
+    assert scene.egoObject.x == 0
+    assert sampleResultFromScene(scene) is None
+
+
+def test_soft_requirement_double_jeopardy():
+    """An inactive soft requirement should not be checked again in simulation.
+
+    If a soft requirement is set inactive (not enforced) for a particular scene,
+    it should never be enforced in simulations run from that scene.
+    """
+    scenario = compileScenic(
+        """
+        ego = new Object at (Range(-10, 10), 0)
+        require[0.51] ego.x >= 0
+        """
+    )
+    violations = []
+    for i in range(220):
+        scene = sampleScene(scenario, maxIterations=60)
+        if scene.egoObject.x < 0:
+            violations.append(scene)
+    assert violations
+    for scene in violations:
+        assert sampleResultFromScene(scene) is not None
 
 
 ## Temporal requirements

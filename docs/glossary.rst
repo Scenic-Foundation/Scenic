@@ -68,6 +68,7 @@ Glossary
 	temporal requirement
 		A :keyword:`require` statement using one or more temporal operators (:keyword:`always`, :keyword:`until`, etc.) to impose a requirement over an entire simulation rather than just the generated scene.
 		For example, :scenic:`require always X` requires not only that the condition ``X`` be true in any scenes sampled from the scenario, but that it remain true at every time step of simulations run from those scenes.
+		Note that temporal requirements are evaluated twice before the simulation starts, once before connecting to the simulator, and once after when initial object values are read back from the simulator. This allows the requirements to account for simulators that alter dynamic properties of objects at time 0.
 
 	visible region
 		The `Region` which is "visible" from a given `Object`. See the :ref:`Visibility System <visibility>` reference for more details.

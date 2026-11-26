@@ -29,6 +29,12 @@ Minor new features:
 
 	* Added a :ref:`minimum distance from` operator which computes the minimum distance between the occupied space of two objects.
 
+
+Notable bug fixes:
+
+	* Fixed :ref:`soft requirements <soft-requirements>` being treated as hard requirements during dynamic simulations.
+
+
 Scenic 3.1.1
 ------------
 

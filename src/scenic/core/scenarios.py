@@ -583,8 +583,13 @@ class Scenario(_ScenarioPickleMixin):
         for modName, namespace in self.behaviorNamespaces.items():
             sampledNamespace = {name: sample[value] for name, value in namespace.items()}
             sampledNamespaces[modName] = (namespace, sampledNamespace, namespace.copy())
+        # N.B. non-temporal requirements are also included here since the simulator
+        # can alter dynamic properties of objects at time 0, so the requirements
+        # should be checked again.
         temporalReqs = (
-            BoundRequirement(req, sample, req.proposition) for req in self.requirements
+            BoundRequirement(req, sample, req.proposition)
+            for req in self.requirements
+            if req.active
         )
         monitors = []
         for req in self.monitors:
