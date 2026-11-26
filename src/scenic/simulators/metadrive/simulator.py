@@ -15,6 +15,7 @@ import time
 
 from metadrive.component.sensors.rgb_camera import RGBCamera
 from metadrive.component.sensors.semantic_camera import SemanticCamera
+from metadrive.component.traffic_participants.cyclist import Cyclist
 from metadrive.component.traffic_participants.pedestrian import Pedestrian
 from metadrive.component.vehicle.vehicle_type import DefaultVehicle
 
@@ -250,13 +251,20 @@ class MetaDriveSimulation(DrivingSimulation):
             self._attach_sensors(obj)
             return
 
-        # For pedestrians
+        # For pedestrians and cyclists
         if obj.isPedestrian:
-            metaDriveActor = self.client.engine.agent_manager.spawn_object(
-                Pedestrian,
-                position=converted_position,
-                heading_theta=converted_heading,
-            )
+            if obj.isBicycle:
+                metaDriveActor = self.client.engine.agent_manager.spawn_object(
+                    Cyclist,
+                    position=converted_position,
+                    heading_theta=converted_heading,
+                )
+            else:
+                metaDriveActor = self.client.engine.agent_manager.spawn_object(
+                    Pedestrian,
+                    position=converted_position,
+                    heading_theta=converted_heading,
+                )
             obj.metaDriveActor = metaDriveActor
 
             # Attach sensors (if any)

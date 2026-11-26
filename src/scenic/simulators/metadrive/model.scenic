@@ -1,7 +1,7 @@
 """Scenic world model for traffic scenarios in MetaDrive.
 
 The model currently supports vehicles and pedestrians. It implements the
-basic :obj:`~scenic.domains.driving.model.Car` and `Pedestrian` classes from the :obj:`scenic.domains.driving` domain.
+basic :obj:`~scenic.domains.driving.model.Car` and `Pedestrian` classes from the :obj:`scenic.domains.driving` domain. 'Bicycle' is implemented as a subclass of 'Pedestrian'.
 Vehicles and pedestrians support the basic actions and behaviors from the driving domain.
 
 The model defines several global parameters, whose default values can be overridden
@@ -183,8 +183,18 @@ class Pedestrian(Pedestrian, MetaDriveActor, Walks):
     def isPedestrian(self):
         return True
 
+    @property
+    def isBicycle(self):
+        return False
+
     def setWalkingDirection(self, heading):
         self._walking_direction = scenicToMetaDriveHeading(heading)
 
     def setWalkingSpeed(self, speed):
         self._walking_speed = speed
+
+
+class Bicycle(Pedestrian):
+    @property
+    def isBicycle(self):
+        return True
