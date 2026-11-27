@@ -1,0 +1,357 @@
+{
+    "SettingsVersion": 1.2,
+    "SimMode": "Multirotor",
+    "ClockSpeed": 1,
+    "Vehicles": {
+        "Drone0": {
+            "VehicleType": "SimpleFlight",
+            "AutoCreate": true,
+            "Sensors": {
+                "frontDistance": {
+                    "SensorType": 5,
+                    "Enabled": true,
+                    "DrawDebugPoints": false
+                },
+                "rightDistance": {
+                    "SensorType": 5,
+                    "Enabled": true,
+                    "DrawDebugPoints": false,
+                    "Yaw": 90,
+                    "Pitch": 0,
+                    "Roll": 0
+                },
+                "leftDistance": {
+                    "SensorType": 5,
+                    "Enabled": true,
+                    "DrawDebugPoints": false,
+                    "Yaw": -90,
+                    "Pitch": 0,
+                    "Roll": 0
+                },
+                "rearDistance": {
+                    "SensorType": 5,
+                    "Enabled": true,
+                    "DrawDebugPoints": false,
+                    "Yaw": 180,
+                    "Pitch": 0,
+                    "Roll": 0
+                }
+            }
+        },
+        "Drone1": {
+            "VehicleType": "SimpleFlight",
+            "AutoCreate": true,
+            "Sensors": {
+                "frontDistance": {
+                    "SensorType": 5,
+                    "Enabled": true,
+                    "DrawDebugPoints": false
+                },
+                "rightDistance": {
+                    "SensorType": 5,
+                    "Enabled": true,
+                    "DrawDebugPoints": false,
+                    "Yaw": 90,
+                    "Pitch": 0,
+                    "Roll": 0
+                },
+                "leftDistance": {
+                    "SensorType": 5,
+                    "Enabled": true,
+                    "DrawDebugPoints": false,
+                    "Yaw": -90,
+                    "Pitch": 0,
+                    "Roll": 0
+                },
+                "rearDistance": {
+                    "SensorType": 5,
+                    "Enabled": true,
+                    "DrawDebugPoints": false,
+                    "Yaw": 180,
+                    "Pitch": 0,
+                    "Roll": 0
+                }
+            }
+        },
+        "Drone2": {
+            "VehicleType": "SimpleFlight",
+            "AutoCreate": false,
+            "Sensors": {
+                "frontDistance": {
+                    "SensorType": 5,
+                    "Enabled": true,
+                    "DrawDebugPoints": true
+                },
+                "rightDistance": {
+                    "SensorType": 5,
+                    "Enabled": true,
+                    "DrawDebugPoints": true,
+                    "Yaw": 90,
+                    "Pitch": 0,
+                    "Roll": 0
+                },
+                "leftDistance": {
+                    "SensorType": 5,
+                    "Enabled": true,
+                    "DrawDebugPoints": true,
+                    "Yaw": -90,
+                    "Pitch": 0,
+                    "Roll": 0
+                },
+                "rearDistance": {
+                    "SensorType": 5,
+                    "Enabled": true,
+                    "DrawDebugPoints": true,
+                    "Yaw": 180,
+                    "Pitch": 0,
+                    "Roll": 0
+                }
+            }
+        },
+        "Drone3": {
+            "VehicleType": "SimpleFlight",
+            "AutoCreate": false,
+            "Sensors": {
+                "frontDistance": {
+                    "SensorType": 5,
+                    "Enabled": true,
+                    "DrawDebugPoints": true
+                },
+                "rightDistance": {
+                    "SensorType": 5,
+                    "Enabled": true,
+                    "DrawDebugPoints": true,
+                    "Yaw": 90,
+                    "Pitch": 0,
+                    "Roll": 0
+                },
+                "leftDistance": {
+                    "SensorType": 5,
+                    "Enabled": true,
+                    "DrawDebugPoints": true,
+                    "Yaw": -90,
+                    "Pitch": 0,
+                    "Roll": 0
+                },
+                "rearDistance": {
+                    "SensorType": 5,
+                    "Enabled": true,
+                    "DrawDebugPoints": true,
+                    "Yaw": 180,
+                    "Pitch": 0,
+                    "Roll": 0
+                }
+            }
+        },
+        "Drone4": {
+            "VehicleType": "SimpleFlight",
+            "AutoCreate": false,
+            "Sensors": {
+                "frontDistance": {
+                    "SensorType": 5,
+                    "Enabled": true,
+                    "DrawDebugPoints": true
+                },
+                "rightDistance": {
+                    "SensorType": 5,
+                    "Enabled": true,
+                    "DrawDebugPoints": true,
+                    "Yaw": 90,
+                    "Pitch": 0,
+                    "Roll": 0
+                },
+                "leftDistance": {
+                    "SensorType": 5,
+                    "Enabled": true,
+                    "DrawDebugPoints": true,
+                    "Yaw": -90,
+                    "Pitch": 0,
+                    "Roll": 0
+                },
+                "rearDistance": {
+                    "SensorType": 5,
+                    "Enabled": true,
+                    "DrawDebugPoints": true,
+                    "Yaw": 180,
+                    "Pitch": 0,
+                    "Roll": 0
+                }
+            }
+        },
+        "Drone5": {
+            "VehicleType": "SimpleFlight",
+            "AutoCreate": false,
+            "Sensors": {
+                "frontDistance": {
+                    "SensorType": 5,
+                    "Enabled": true,
+                    "DrawDebugPoints": true
+                },
+                "rightDistance": {
+                    "SensorType": 5,
+                    "Enabled": true,
+                    "DrawDebugPoints": true,
+                    "Yaw": 90,
+                    "Pitch": 0,
+                    "Roll": 0
+                },
+                "leftDistance": {
+                    "SensorType": 5,
+                    "Enabled": true,
+                    "DrawDebugPoints": true,
+                    "Yaw": -90,
+                    "Pitch": 0,
+                    "Roll": 0
+                },
+                "rearDistance": {
+                    "SensorType": 5,
+                    "Enabled": true,
+                    "DrawDebugPoints": true,
+                    "Yaw": 180,
+                    "Pitch": 0,
+                    "Roll": 0
+                }
+            }
+        },
+        "Drone6": {
+            "VehicleType": "SimpleFlight",
+            "AutoCreate": false,
+            "Sensors": {
+                "frontDistance": {
+                    "SensorType": 5,
+                    "Enabled": true,
+                    "DrawDebugPoints": true
+                },
+                "rightDistance": {
+                    "SensorType": 5,
+                    "Enabled": true,
+                    "DrawDebugPoints": true,
+                    "Yaw": 90,
+                    "Pitch": 0,
+                    "Roll": 0
+                },
+                "leftDistance": {
+                    "SensorType": 5,
+                    "Enabled": true,
+                    "DrawDebugPoints": true,
+                    "Yaw": -90,
+                    "Pitch": 0,
+                    "Roll": 0
+                },
+                "rearDistance": {
+                    "SensorType": 5,
+                    "Enabled": true,
+                    "DrawDebugPoints": true,
+                    "Yaw": 180,
+                    "Pitch": 0,
+                    "Roll": 0
+                }
+            }
+        },
+        "Drone7": {
+            "VehicleType": "SimpleFlight",
+            "AutoCreate": false,
+            "Sensors": {
+                "frontDistance": {
+                    "SensorType": 5,
+                    "Enabled": true,
+                    "DrawDebugPoints": true
+                },
+                "rightDistance": {
+                    "SensorType": 5,
+                    "Enabled": true,
+                    "DrawDebugPoints": true,
+                    "Yaw": 90,
+                    "Pitch": 0,
+                    "Roll": 0
+                },
+                "leftDistance": {
+                    "SensorType": 5,
+                    "Enabled": true,
+                    "DrawDebugPoints": true,
+                    "Yaw": -90,
+                    "Pitch": 0,
+                    "Roll": 0
+                },
+                "rearDistance": {
+                    "SensorType": 5,
+                    "Enabled": true,
+                    "DrawDebugPoints": true,
+                    "Yaw": 180,
+                    "Pitch": 0,
+                    "Roll": 0
+                }
+            }
+        },
+        "Drone8": {
+            "VehicleType": "SimpleFlight",
+            "AutoCreate": false,
+            "Sensors": {
+                "frontDistance": {
+                    "SensorType": 5,
+                    "Enabled": true,
+                    "DrawDebugPoints": true
+                },
+                "rightDistance": {
+                    "SensorType": 5,
+                    "Enabled": true,
+                    "DrawDebugPoints": true,
+                    "Yaw": 90,
+                    "Pitch": 0,
+                    "Roll": 0
+                },
+                "leftDistance": {
+                    "SensorType": 5,
+                    "Enabled": true,
+                    "DrawDebugPoints": true,
+                    "Yaw": -90,
+                    "Pitch": 0,
+                    "Roll": 0
+                },
+                "rearDistance": {
+                    "SensorType": 5,
+                    "Enabled": true,
+                    "DrawDebugPoints": true,
+                    "Yaw": 180,
+                    "Pitch": 0,
+                    "Roll": 0
+                }
+            }
+        },
+        "Drone9": {
+            "VehicleType": "SimpleFlight",
+            "AutoCreate": false,
+            "Sensors": {
+                "frontDistance": {
+                    "SensorType": 5,
+                    "Enabled": true,
+                    "DrawDebugPoints": true
+                },
+                "rightDistance": {
+                    "SensorType": 5,
+                    "Enabled": true,
+                    "DrawDebugPoints": true,
+                    "Yaw": 90,
+                    "Pitch": 0,
+                    "Roll": 0
+                },
+                "leftDistance": {
+                    "SensorType": 5,
+                    "Enabled": true,
+                    "DrawDebugPoints": true,
+                    "Yaw": -90,
+                    "Pitch": 0,
+                    "Roll": 0
+                },
+                "rearDistance": {
+                    "SensorType": 5,
+                    "Enabled": true,
+                    "DrawDebugPoints": true,
+                    "Yaw": 180,
+                    "Pitch": 0,
+                    "Roll": 0
+                }
+            }
+        }
+    }
+}
