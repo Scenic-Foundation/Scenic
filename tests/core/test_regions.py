@@ -4,6 +4,7 @@ from pathlib import Path
 import fcl
 import pytest
 import shapely.geometry
+import trimesh.creation
 import trimesh.voxel
 
 from scenic.core.distributions import RandomControlFlowError, Range
@@ -278,6 +279,11 @@ def test_polygon_sampling():
     assert sum(y >= 1.5 for y in ys) >= 1250
 
 
+def test_circular_region_distance_to_off_plane_point():
+    circle = CircularRegion((0, 0, 5), 1, resolution=64)
+    assert circle.distanceTo((0, 0, 0)) == pytest.approx(5.0)
+
+
 def test_polygon_trueContainsPoint():
     r = CircularRegion((0, 0), 1, resolution=64)
 
@@ -326,6 +332,15 @@ def test_mesh_operation():
     r1.intersect(r2)
     r1.union(r2)
     r1.difference(r2)
+
+
+def test_mesh_region_project_vector_uses_closest_ray_hit():
+    b1 = MeshVolumeRegion(trimesh.creation.box((1, 1, 1)), position=(0, 0, 0))
+    b2 = MeshVolumeRegion(trimesh.creation.box((1, 1, 1)), position=(0, 0, 4))
+    region = b1.union(b2)
+    proj = region.projectVector(Vector(0, 0, 1), (0, 0, 1))
+    assert proj is not None
+    assert proj.z == pytest.approx(0.5)
 
 
 def test_mesh_volume_region_sampling():
